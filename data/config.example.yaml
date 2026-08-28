@@ -1,0 +1,22 @@
+# Copy to data/config.yaml (gitignored) and adjust.
+
+content:
+  # provider: pollinations (FREE, no key, rate-limited) | openai (any OpenAI-compatible
+  # endpoint incl. OpenRouter/Groq/Ollama) | template (offline scaffold)
+  provider: pollinations
+  pollinations_model: openai
+  # openai_base_url: https://api.openai.com/v1     # or http://localhost:11434/v1 for Ollama
+  # openai_model: gpt-4o-mini
+
+images:
+  provider: pollinations      # free, keyless (image.pollinations.ai)
+  width: 1200
+  height: 675
+
+publishing:
+  default_platforms: githubpages,devto,telegraph,mastodon
+  origin_first: true          # publish to origin, set canonical, then syndicate
+  stagger_minutes: 30         # minutes between platforms (natural cadence)
+
+persona:
+  file: data/persona.yaml

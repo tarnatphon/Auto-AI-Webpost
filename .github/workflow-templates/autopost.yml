@@ -1,0 +1,72 @@
+name: Auto-post scheduler (free)
+
+# Runs your drip queue in the cloud, free, via GitHub Actions.
+# Queue entries live in data/queue.yaml (pushed from your Mac by sync_local.sh).
+#
+# Setup:
+#   1. Repo Settings -> Secrets and variables -> Actions
+#      add the secrets for the platforms you use (DEVTO_API_KEY, GITHUB_TOKEN*, ...)
+#      (*create your own fine-grained PAT named GHPAGES_TOKEN with Contents
+#       read/write — the built-in GITHUB_TOKEN also works for same-repo Pages)
+#   2. Push queue entries from your Mac, or add them via `queue add`.
+#   3. Everything stays dry-run until you set `live: true` below.
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"   # every 30 minutes, UTC
+  workflow_dispatch:          # manual "Run workflow" button
+
+permissions:
+  contents: write             # allows committing results back
+
+concurrency:
+  group: autopost
+  cancel-in-progress: false
+
+jobs:
+  run-queue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: pip install -r requirements.txt
+
+      - name: Run due queue entries
+        env:
+          LIVE: "false"                     # <- flip to "true" when your pipeline is verified
+          DEVTO_API_KEY: ${{ secrets.DEVTO_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GHPAGES_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ secrets.GITHUB_REPO }}
+          WP_SITE: ${{ secrets.WP_SITE }}
+          WP_USER: ${{ secrets.WP_USER }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          BLOGGER_ACCESS_TOKEN: ${{ secrets.BLOGGER_ACCESS_TOKEN }}
+          BLOGGER_BLOG_ID: ${{ secrets.BLOGGER_BLOG_ID }}
+          TUMBLR_CONSUMER_KEY: ${{ secrets.TUMBLR_CONSUMER_KEY }}
+          TUMBLR_CONSUMER_SECRET: ${{ secrets.TUMBLR_CONSUMER_SECRET }}
+          TUMBLR_BLOG: ${{ secrets.TUMBLR_BLOG }}
+          MASTODON_INSTANCE: ${{ secrets.MASTODON_INSTANCE }}
+          MASTODON_TOKEN: ${{ secrets.MASTODON_TOKEN }}
+          WRITEAS_ALIAS: ${{ secrets.WRITEAS_ALIAS }}
+          WRITEAS_PASSWORD: ${{ secrets.WRITEAS_PASSWORD }}
+        run: |
+          if [ "$LIVE" = "true" ]; then
+            python -m autowebpost.cli queue run --live
+          else
+            echo "DRY-RUN mode — set LIVE=true in the workflow to publish for real."
+            python -m autowebpost.cli queue run
+          fi
+
+      - name: Commit queue state
+        run: |
+          git config user.name "auto-ai-webpost bot"
+          git config user.email "actions@github.com"
+          git add data/queue.yaml || true
+          git diff --cached --quiet || git commit -m "chore: queue state update [skip ci]"
+          git push

@@ -1,0 +1,20 @@
+# secrets & local state
+.env
+data/config.yaml
+data/persona.yaml
+data/registration_status.yaml
+data/credentials.local.yaml
+data/.credentials.local.yaml
+data/.telegraph_token
+data/.tumblr_token
+data/queue.yaml
+
+# generated output (examples are force-added)
+output/drafts/
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store

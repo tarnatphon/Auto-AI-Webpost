@@ -1,0 +1,4 @@
+{
+  "article": "A field-tested guide to ai auto posting workflow - steps, tools, mistakes to avoid, and a checklist you can apply today.",
+  "title": "AI Auto Posting Workflow: The Practical 2026 Guide"
+}

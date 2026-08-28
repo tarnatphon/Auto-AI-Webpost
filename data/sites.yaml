@@ -1,0 +1,234 @@
+# Auto-AI-WebPost curated catalog - free, high-authority publishing platforms
+# Research: 2026 (sources linked in docs/01-research-report.md)
+# da = approximate Domain Authority | api: free = official free API
+#       pro = API behind paid tier | none = manual publishing only
+# publisher = implemented adapter slug in autowebpost/platforms/
+
+- slug: githubpages
+  name: GitHub Pages
+  url: https://pages.github.com
+  signup_url: https://github.com/signup
+  da: 96
+  dofollow: true
+  api: free
+  api_docs: https://docs.github.com/en/rest/repos/contents
+  publisher: githubpages
+  category: origin-site
+  best_for: "Your OWN origin site - canonical URL source, full SEO control"
+  notes: "The keystone. Jekyll blog on <user>.github.io, free forever, dofollow, you own the domain option."
+  env_keys: [GITHUB_TOKEN, GITHUB_REPO]
+
+- slug: blogger
+  name: Blogger
+  url: https://www.blogger.com
+  signup_url: https://www.blogger.com/go/signup
+  da: 96
+  dofollow: true
+  api: free
+  api_docs: https://developers.google.com/blogger/docs/3.0/reference/posts/insert
+  publisher: blogger
+  category: web20-blog
+  best_for: "Google-trusted blogs, very fast indexing, AdSense option"
+  notes: "OAuth2 token needed (Google OAuth Playground). Posts created as drafts by default."
+  env_keys: [BLOGGER_ACCESS_TOKEN, BLOGGER_BLOG_ID]
+
+- slug: wordpress
+  name: WordPress (.com / self-hosted)
+  url: https://wordpress.com
+  signup_url: https://wordpress.com/start
+  da: 93
+  dofollow: true
+  api: free
+  api_docs: https://developer.wordpress.org/rest-api/reference/posts/
+  publisher: wordpress
+  category: web20-blog
+  best_for: "Long-form articles, most flexible free tier, Yoast SEO on self-hosted"
+  notes: "Application Passwords auth. Works with any self-hosted WP too - ideal if you later get your own domain."
+  env_keys: [WP_SITE, WP_USER, WP_APP_PASSWORD]
+
+- slug: medium
+  name: Medium
+  url: https://medium.com
+  signup_url: https://medium.com/m/signin
+  da: 95
+  dofollow: false
+  api: manual-assist
+  api_docs: ""
+  publisher: medium
+  category: web20-blog
+  best_for: "Biggest built-in audience; brand visibility"
+  notes: "Public API retired (2025-26). Use 'Import a story' with canonical URL - adapter prepares everything. Never copy-paste (duplicate content)."
+
+- slug: tumblr
+  name: Tumblr
+  url: https://www.tumblr.com
+  signup_url: https://www.tumblr.com/register
+  da: 91
+  dofollow: true
+  api: free
+  api_docs: https://www.tumblr.com/docs/en/api/v2
+  publisher: tumblr
+  category: web20-blog
+  best_for: "Visual/micro content, dofollow links, creative niches"
+  notes: "OAuth1 (one-time 'connect tumblr' flow). DA ~91 and links are followed."
+  env_keys: [TUMBLR_CONSUMER_KEY, TUMBLR_CONSUMER_SECRET, TUMBLR_BLOG]
+
+- slug: telegraph
+  name: Telegra.ph
+  url: https://telegra.ph
+  signup_url: https://telegra.ph
+  da: 88
+  dofollow: true
+  api: free
+  api_docs: https://telegra.ph/api
+  publisher: telegraph
+  category: instant-webpost
+  best_for: "Instant anonymous web posts - zero signup, instant pages"
+  notes: "The fastest free webpost on the internet. No account at all; token auto-created. Great for announcements + supporting content clusters."
+  env_keys: []
+
+- slug: devto
+  name: DEV.to
+  url: https://dev.to
+  signup_url: https://dev.to/enter
+  da: 82
+  dofollow: false
+  api: free
+  api_docs: https://developers.forem.com/api/v1
+  publisher: devto
+  category: dev-community
+  best_for: "Tech/dev topics - massive dev traffic and Google visibility"
+  notes: "Simplest API (api-key header). Set canonical_url when cross-posting. Tags max 4, lowercase."
+  env_keys: [DEVTO_API_KEY]
+
+- slug: hashnode
+  name: Hashnode
+  url: https://hashnode.com
+  signup_url: https://hashnode.com
+  da: 84
+  dofollow: true
+  api: pro
+  api_docs: https://gql.hashnode.com
+  publisher: hashnode
+  category: dev-community
+  best_for: "Dev blogging on your own subdomain (free tier still allows manual posts)"
+  notes: "GraphQL API moved behind Pro ($5/mo) in May 2026 - adapter works but flag the cost. Manual posting remains free."
+  env_keys: [HASHNODE_TOKEN, HASHNODE_PUBLICATION_ID]
+
+- slug: writeas
+  name: Write.as
+  url: https://write.as
+  signup_url: https://write.as/settings/account
+  da: 75
+  dofollow: true
+  api: free
+  api_docs: https://developers.write.as/docs/api/
+  publisher: writeas
+  category: web20-blog
+  best_for: "Minimalist blogging, anonymous posting, WriteFreely federation"
+  notes: "API allows anonymous posts with zero setup. Also powers federated WriteFreely instances."
+  env_keys: []
+
+- slug: mastodon
+  name: Mastodon
+  url: https://mastodon.social
+  signup_url: https://joinmastodon.org/servers
+  da: 90
+  dofollow: true
+  api: free
+  api_docs: https://docs.joinmastodon.org/methods/statuses/
+  publisher: mastodon
+  category: social
+  best_for: "Open social web - dofollow links from high-DA instances, indexed"
+  notes: "Post snippets + links, not full articles. Free app token from your instance settings."
+  env_keys: [MASTODON_INSTANCE, MASTODON_TOKEN]
+
+# ---- Platforms in the catalog worth posting to MANUALLY (no public/free API) ----
+
+- slug: linkedin
+  name: LinkedIn Articles
+  url: https://www.linkedin.com
+  signup_url: https://www.linkedin.com/signup
+  da: 98
+  dofollow: false
+  api: none
+  category: social
+  best_for: "B2B authority building - highest DA on this list"
+  notes: "UGC post API needs LinkedIn partner approval. Manual republishing with canonical URL works fine and indexes in hours."
+
+- slug: substack
+  name: Substack
+  url: https://substack.com
+  signup_url: https://substack.com/signup
+  da: 86
+  dofollow: true
+  api: none
+  category: newsletter
+  best_for: "Email newsletter + public blog hybrid, free forever"
+  notes: "No public API. Manual cross-posting after origin publish; newsletter builds the audience that Google can't take away."
+
+- slug: quora
+  name: Quora (Spaces)
+  url: https://www.quora.com
+  signup_url: https://www.quora.com
+  da: 93
+  dofollow: false
+  api: none
+  category: q-a
+  best_for: "Answer question keywords directly; long-tail traffic"
+  notes: "Manual. Answer real questions (2-3/week) referencing your article - strong referral traffic, builds author entity."
+
+- slug: reddit
+  name: Reddit
+  url: https://www.reddit.com
+  signup_url: https://www.reddit.com/register
+  da: 91
+  dofollow: false
+  api: free
+  category: community
+  best_for: "Niche subreddits - traffic and feedback, NOT link drops"
+  notes: "API exists but automated posting is heavily policed. Participate manually, follow each subreddit's self-promo rules, or you will be banned platform-wide."
+
+- slug: livejournal
+  name: LiveJournal
+  url: https://www.livejournal.com
+  signup_url: https://www.livejournal.com/create
+  da: 87
+  dofollow: true
+  api: free
+  category: web20-blog
+  best_for: "Legacy DA ~87 dofollow blog posts"
+  notes: "Has an API but manual posting is more reliable. Keep as supporting-tier platform."
+
+- slug: hubpages
+  name: HubPages
+  url: https://discover.hubpages.com
+  signup_url: https://hubpages.com/user/new
+  da: 81
+  dofollow: true
+  api: none
+  category: article-directory
+  best_for: "Evergreen long-form articles, revenue share"
+  notes: "Manual, editorial review - only your BEST content. AI-spam is banned quickly."
+
+- slug: steemit
+  name: Steemit
+  url: https://steemit.com
+  signup_url: https://signup.steemit.com
+  da: 67
+  dofollow: true
+  api: free
+  category: web3
+  best_for: "Blockchain blog, instant dofollow, crypto audiences"
+  notes: "Steem blockchain APIs are free (posting key auth). Community is small but links stick."
+
+- slug: google-sites
+  name: Google Sites
+  url: https://sites.google.com
+  signup_url: https://sites.google.com/new
+  da: 96
+  dofollow: false
+  api: none
+  category: origin-site
+  best_for: "Trusted 'about the brand' + resource pages"
+  notes: "Manual builder. One authoritative brand site linking to your origin = cheap entity signal."
