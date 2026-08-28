@@ -1,0 +1,36 @@
+# Copy to data/persona.yaml and fill with YOUR identity (real name or pen name).
+# This powers author boxes (E-E-A-T), profile pre-fill, and entity consistency.
+
+name: Alex Carter
+handle: alexcarter
+brand: Alex Carter Labs
+email: you@example.com
+website: https://yourname.github.io
+tagline: "AI automation engineer & technical SEO practitioner"
+
+expertise:
+  - AI content workflows
+  - Technical SEO
+  - Python automation
+  - Web publishing APIs
+
+credentials:            # REAL only - never invent these (E-E-A-T is checkable)
+  - "B.Eng. Computer Engineering"
+  - "Built 40+ production automations since 2019"
+
+experience_years: 7
+
+bio_short: >-
+  AI automation engineer with 7+ years building content pipelines that rank.
+  Writes from real projects, with real numbers.
+
+bio_long: >-
+  Alex Carter has spent 7+ years building AI-assisted publishing pipelines for
+  indie brands and agencies. Every article is drawn from systems that actually
+  ran in production: tools tested, results measured, mistakes included.
+  Corrections and questions are welcome via the contact page.
+
+social:
+  github: https://github.com/yourname
+  x: https://x.com/yourhandle
+  linkedin: https://www.linkedin.com/in/yourname
