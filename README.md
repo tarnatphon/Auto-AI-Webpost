@@ -101,7 +101,7 @@ bash scripts/sync_local.sh                       # anytime: pull --rebase, commi
 
 ## Cloud scheduling (free)
 
-`.github/workflows/autopost.yml` runs your queue every 30 min on GitHub Actions' free tier. Add repo secrets for the platforms you use; keep `LIVE: "false"` until the pipeline is verified.
+The workflow template lives at `.github/workflow-templates/autopost.yml` — `scripts/mac-setup.sh` copies it to `.github/workflows/` for you (GitHub only allows a logged-in user, not a bot, to create workflow files, so the push from your Mac is what activates it). It then runs your queue every 30 min on GitHub Actions' free tier. Add repo secrets for the platforms you use; keep `LIVE: "false"` until the pipeline is verified.
 
 ## Repo layout
 

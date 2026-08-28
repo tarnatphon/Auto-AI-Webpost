@@ -50,6 +50,14 @@ pip install -r requirements.txt -q
 [ -f data/config.yaml ] || cp data/config.example.yaml data/config.yaml
 [ -f data/persona.yaml ] || cp data/persona.example.yaml data/persona.yaml
 
+# --- 4. install the free cloud-scheduler workflow (needs YOUR git push,
+#        since GitHub only lets users - not bots - create workflow files)
+if [ ! -f .github/workflows/autopost.yml ]; then
+    mkdir -p .github/workflows
+    cp .github/workflow-templates/autopost.yml .github/workflows/autopost.yml
+    echo "==> Installed .github/workflows/autopost.yml (will activate on your next push)"
+fi
+
 echo ""
 echo "Setup complete. Next:"
 echo "  cd \"/Volumes/AI/Auto AI WebPost\" && source .venv/bin/activate"
