@@ -113,7 +113,7 @@ The workflow template lives at `.github/workflow-templates/autopost.yml` — `sc
 
 ```
 autowebpost/          the engine (content, images, platforms, profiles, research, scheduler)
-tests/                328 offline tests (pytest) - 96% coverage of autowebpost/
+tests/                331 offline tests (pytest) - 96% coverage of autowebpost/
 data/                 catalog (sites.yaml) + persona/config templates + .env.example
 docs/                 research report · SEO/E-E-A-T playbook · compliance rules
 scripts/              mac-setup.sh · sync_local.sh
@@ -125,15 +125,18 @@ output/drafts/        generated drafts + images + checklists (gitignored; exampl
 
 ```bash
 pip install -r requirements-dev.txt
-pytest                                   # 328 tests, fully offline, ~3s
+pytest                                   # 331 tests, fully offline, ~3s
 pytest --cov=autowebpost --cov-report=term-missing
 ```
 
-The suite never touches the network or a real account: every HTTP call is
-mocked, the queue and draft folders are redirected to `tmp_path`, and the live
-`_publish_live` path is exercised with canned responses so adapter bugs surface
-before they reach your accounts. CI (`.github/workflows/tests.yml`) runs the
-suite plus a CLI smoke test on Python 3.9–3.13.
+The suite never touches the network or a real account. An autouse fixture in
+`tests/conftest.py` **hard-blocks `requests`**, so a test cannot accidentally
+publish: Telegra.ph needs no API key at all, so on a networked machine a stray
+`live=True` would create a real public page. HTTP is mocked, the queue and draft
+folders are redirected to `tmp_path`, and the live `_publish_live` path is
+exercised with canned responses so adapter bugs surface before they reach your
+accounts. CI (`.github/workflows/tests.yml`) runs the suite plus a CLI smoke
+test on Python 3.9–3.13.
 
 Install it as a package instead of running from a clone:
 
