@@ -8,7 +8,7 @@
 set -euo pipefail
 
 REPO_URL="${REPO_URL:-https://github.com/tarnatphon/Auto-AI-Webpost.git}"
-LOCAL_DIR="/Volumes/AI/Auto AI WebPost"
+LOCAL_DIR="${LOCAL_DIR:-/Volumes/AI/Auto AI WebPost}"
 
 echo "==> Auto-AI-WebPost setup"
 echo "    local folder : $LOCAL_DIR"

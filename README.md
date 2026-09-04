@@ -35,10 +35,15 @@
 
 ## Quickstart (your Mac)
 
+> **macOS has no `python` command** (Apple removed it in 12.3). Use `python3`,
+> or activate the virtualenv below — inside it, `python` works. Every command in
+> this README assumes you are in the venv.
+
 ```bash
-# 1. one-time setup of /Volumes/AI/Auto AI WebPost
+# 1. one-time setup
+export LOCAL_DIR="/Volumes/AI-1/Auto AI WebPost"   # only if not /Volumes/AI/Auto AI WebPost
 bash scripts/mac-setup.sh
-cd "/Volumes/AI/Auto AI WebPost" && source .venv/bin/activate
+cd "$LOCAL_DIR" && source .venv/bin/activate
 
 # 2. your identity (powers E-E-A-T + signup pre-fill)
 python -m autowebpost.cli persona --init
@@ -129,9 +134,11 @@ The human-review gate, as an actual workflow instead of "remember to open the
 markdown". Runs on the stdlib alone — no Flask, nothing new in `requirements.txt`.
 
 ```bash
-python -m autowebpost.cli serve            # http://127.0.0.1:8765
-python -m autowebpost.cli serve --allow-live --host 0.0.0.0   # only if you must
+python3 -m autowebpost.cli serve              # http://127.0.0.1:8765
+python3 -m autowebpost.cli serve --allow-live # only if you really mean it
 ```
+
+(Or `pip install -e .` once, then just `autowebpost serve` — see Development.)
 
 For each draft it shows the article preview, the SEO fields and generated
 JSON-LD, every unresolved `EDIT-ME` marker, and the 10-point E-E-A-T checklist —
@@ -186,6 +193,16 @@ pip install -e .          # then: autowebpost sites
 | Write.as | ✅ optional account | anonymous OK |
 | Hashnode | ⚠️ Pro now ($5/mo, May 2026) | adapter present, flagged |
 | Medium | 🖐 prepared manual import | API retired 2025-26 |
+
+## Troubleshooting
+
+| Symptom | Cause / fix |
+|---|---|
+| `zsh: command not found: python` | macOS 12.3+ has no `python`. Use `python3`, or `source .venv/bin/activate` first. |
+| `ModuleNotFoundError: No module named 'yaml'` | Deps not installed: `pip install -r requirements.txt` (or `pip3` outside a venv). |
+| `unknown command: serve` | Your folder is behind. `serve` is in PR #2 — merge it, or `git fetch origin && git checkout arena/01a06ae5-auto-ai-webpost`. |
+| Setup script targets the wrong folder | It defaults to `/Volumes/AI/Auto AI WebPost`. Override: `export LOCAL_DIR="/Volumes/AI-1/Auto AI WebPost"`. |
+| `generate` falls back to the offline template | No network or Pollinations unreachable. That fallback is by design; force it with `AUTOWEBPOST_PROVIDER=template`. |
 
 ## Changelog
 
