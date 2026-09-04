@@ -91,7 +91,9 @@ Or one shot: `python -m autowebpost.cli run --topic "..." --to githubpages,devto
 
 ## Content engine
 
-- **Providers:** `pollinations` (free, no key — default) · `openai` (any OpenAI-compatible endpoint: OpenAI, OpenRouter, Groq, Ollama, LM Studio) · `template` (offline scaffold, always works). Auto-falls back to template if the network provider fails.
+- **Providers:** `pollinations` (free, no key — default) · `gemini` (Gemini 2.5 Flash, free tier) · `openai` (any OpenAI-compatible endpoint: OpenAI, OpenRouter, Groq, Ollama, LM Studio) · `template` (offline scaffold, always works). Auto-falls back to template if the network provider fails.
+
+  Set `provider: gemini` in `data/config.yaml` and put `GEMINI_API_KEY=...` in `.env` (get one at aistudio.google.com/apikey).
 - Force a provider for one run (or in CI) without editing `data/config.yaml`:
 
   ```bash

@@ -249,3 +249,139 @@ class TestAttachImages:
         finally:
             monkeypatch.undo()
         assert d.images == [] and d.body_markdown
+
+
+class TestGeminiProvider:
+    """Native Gemini provider (has a free tier, unlike OpenAI).
+
+    Ported from a monkey-patch that was living uncommitted in a working tree -
+    it is now a first-class provider with the same tests as the others.
+    """
+
+    def _stub(self, monkeypatch, handler):
+        seen = []
+        import requests
+
+        class Resp:
+            def __init__(self, payload, status=200, text=""):
+                self._p, self.status_code, self.text = payload, status, text or str(payload)
+
+            @property
+            def ok(self):
+                return self.status_code < 400
+
+            def json(self):
+                return self._p
+
+        def _post(url, **kw):
+            seen.append((url, kw))
+            return handler(url, kw, Resp)
+        monkeypatch.setattr(requests, "post", _post)
+        return seen
+
+    @staticmethod
+    def gemini_reply(text):
+        return {"candidates": [{"content": {"parts": [{"text": text}]}}]}
+
+    def test_builds_the_native_request_shape(self, monkeypatch):
+        from autowebpost.content.engine import GeminiNativeProvider
+        seen = self._stub(monkeypatch,
+                          lambda u, kw, R: R(self.gemini_reply("hello")))
+        out = GeminiNativeProvider("k").complete("SYS", "USR")
+
+        assert out == "hello"
+        url, kw = seen[0]
+        assert "generativelanguage.googleapis.com" in url
+        assert "gemini-2.5-flash" in url
+        body = kw["json"]
+        assert body["system_instruction"]["parts"][0]["text"] == "SYS"
+        assert body["contents"][0]["parts"][0]["text"] == "USR"
+        assert body["contents"][0]["role"] == "user"
+
+    def test_sends_the_key_as_a_header(self, monkeypatch):
+        from autowebpost.content.engine import GeminiNativeProvider
+        seen = self._stub(monkeypatch,
+                          lambda u, kw, R: R(self.gemini_reply("x")))
+        GeminiNativeProvider("secret-key").complete("s", "u")
+        assert seen[0][1]["headers"]["x-goog-api-key"] == "secret-key"
+
+    def test_joins_multiple_parts(self, monkeypatch):
+        from autowebpost.content.engine import GeminiNativeProvider
+        multi = {"candidates": [{"content": {"parts": [{"text": "one "}, {"text": "two"}]}}]}
+        self._stub(monkeypatch, lambda u, kw, R: R(multi))
+        assert GeminiNativeProvider("k").complete("s", "u") == "one two"
+
+    def test_falls_back_to_query_param_auth(self, monkeypatch):
+        from autowebpost.content.engine import GeminiNativeProvider
+        calls = []
+
+        def handler(url, kw, R):
+            calls.append(url)
+            if "?key=" in url:
+                return R(self.gemini_reply("via query"))
+            return R({}, status=401, text="unauthorized")
+
+        self._stub(monkeypatch, handler)
+        out = GeminiNativeProvider("abc").complete("s", "u")
+        assert out == "via query"
+        assert "?key=abc" in calls[-1]
+
+    def test_raises_after_both_transports_fail(self, monkeypatch):
+        from autowebpost.content.engine import GeminiNativeProvider
+        self._stub(monkeypatch, lambda u, kw, R: R({}, status=403, text="forbidden"))
+        with pytest.raises(RuntimeError, match="Gemini native"):
+            GeminiNativeProvider("k").complete("s", "u")
+
+    def test_empty_candidates_falls_through_then_raises(self, monkeypatch):
+        from autowebpost.content.engine import GeminiNativeProvider
+        self._stub(monkeypatch, lambda u, kw, R: R({"candidates": []}))
+        with pytest.raises(RuntimeError, match="empty candidates"):
+            GeminiNativeProvider("k").complete("s", "u")
+
+    def test_network_error_is_reported_not_raised_raw(self, monkeypatch):
+        from autowebpost.content.engine import GeminiNativeProvider
+        self._stub(monkeypatch, lambda u, kw, R: (_ for _ in ()).throw(
+            __import__("requests").ConnectionError("offline")))
+        with pytest.raises(RuntimeError, match="offline"):
+            GeminiNativeProvider("k").complete("s", "u")
+
+    def test_make_provider_wires_it_up(self, monkeypatch):
+        from autowebpost.content.engine import GeminiNativeProvider, make_provider
+        monkeypatch.setenv("GEMINI_API_KEY", "gk")
+        p = make_provider({"provider": "gemini"})
+        assert isinstance(p, GeminiNativeProvider) and p.api_key == "gk"
+
+    def test_make_provider_accepts_openai_key_as_fallback(self, monkeypatch):
+        from autowebpost.content.engine import GeminiNativeProvider, make_provider
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.setenv("OPENAI_API_KEY", "ok")
+        assert make_provider({"provider": "gemini"}).api_key == "ok"
+
+    def test_make_provider_gemini_requires_a_key(self, monkeypatch):
+        from autowebpost.content.engine import make_provider
+        for k in ("GEMINI_API_KEY", "OPENAI_API_KEY", "LLM_API_KEY"):
+            monkeypatch.delenv(k, raising=False)
+        with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
+            make_provider({"provider": "gemini"})
+
+    def test_honours_the_model_setting(self, monkeypatch):
+        from autowebpost.content.engine import make_provider
+        monkeypatch.setenv("GEMINI_API_KEY", "gk")
+        assert make_provider({"provider": "gemini",
+                              "gemini_model": "gemini-2.5-pro"}).model == "gemini-2.5-pro"
+
+    def test_env_override_selects_gemini(self, monkeypatch):
+        from autowebpost.content.engine import GeminiNativeProvider, make_provider
+        monkeypatch.setenv("AUTOWEBPOST_PROVIDER", "gemini")
+        monkeypatch.setenv("GEMINI_API_KEY", "gk")
+        assert isinstance(make_provider({"provider": "template"}), GeminiNativeProvider)
+
+    def test_engine_falls_back_to_template_when_gemini_fails(self, persona, monkeypatch):
+        """A dead API must not lose the run - same contract as every provider."""
+        self._stub(monkeypatch, lambda u, kw, R: R({}, status=500, text="boom"))
+        monkeypatch.setenv("GEMINI_API_KEY", "gk")
+        from autowebpost.content.engine import ContentEngine, make_provider
+        eng = ContentEngine(persona, make_provider({"provider": "gemini"}))
+        d = eng.generate(brief(), generate_images=False)
+        assert eng.fallback_used is True
+        assert d.generator == "template"
