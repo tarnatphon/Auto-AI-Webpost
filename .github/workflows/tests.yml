@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: tests-${{ github.ref }}
@@ -58,6 +58,21 @@ jobs:
         with:
           name: pytest-log-py${{ matrix.python-version }}
           path: pytest.log
+
+      - name: Publish test log to the branch (debug)
+        if: failure() && matrix.python-version == '3.11'
+        run: |
+          git config user.name "ci-debug"
+          git config user.email "ci@debug.local"
+          mkdir -p ci-logs
+          cp pytest.log ci-logs/py311.log
+          git add ci-logs
+          git diff --cached --quiet && exit 0
+          git commit -m "ci: test log (debug) [skip ci]"
+          for i in 1 2 3; do
+            git pull --rebase origin "${GITHUB_HEAD_REF}" && git push origin "HEAD:${GITHUB_HEAD_REF}" && break
+            sleep 5
+          done
 
       - name: Smoke-test the CLI (offline)
         env:
