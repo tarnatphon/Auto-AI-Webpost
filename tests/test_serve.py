@@ -354,3 +354,39 @@ class TestImages:
     def test_missing_image_is_404(self, seeded):
         c, _, _ = seeded
         assert c.get("/images/2026-09-04-a-draft/nope.jpg")[0] == 404
+
+
+class TestLauncher:
+    """bin/autowebpost must find an interpreter without assuming `python` exists."""
+
+    def test_launcher_is_executable(self):
+        import os
+        from pathlib import Path
+        script = Path(__file__).resolve().parent.parent / "bin" / "autowebpost"
+        assert script.exists()
+        assert os.access(script, os.X_OK)
+
+    def test_launcher_runs_the_cli(self):
+        import subprocess
+        from pathlib import Path
+        root = Path(__file__).resolve().parent.parent
+        r = subprocess.run(["bash", "bin/autowebpost", "--version"],
+                           cwd=root, capture_output=True, text=True, timeout=120)
+        assert r.returncode == 0, r.stderr
+        assert r.stdout.strip()
+
+    def test_launcher_reaches_a_subcommand(self):
+        import subprocess
+        from pathlib import Path
+        root = Path(__file__).resolve().parent.parent
+        r = subprocess.run(["bash", "bin/autowebpost", "sites", "--api-only"],
+                           cwd=root, capture_output=True, text=True, timeout=120)
+        assert r.returncode == 0, r.stderr
+        assert "telegraph" in r.stdout
+
+    def test_launcher_prefers_the_venv_interpreter(self):
+        from pathlib import Path
+        script = (Path(__file__).resolve().parent.parent / "bin" / "autowebpost")
+        body = script.read_text()
+        assert ".venv/bin/python3" in body          # venv tried before system
+        assert body.index(".venv/bin/python3") < body.index("command -v")

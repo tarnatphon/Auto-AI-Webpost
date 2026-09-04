@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 # Launcher that finds a working interpreter.
-# macOS 12.3+ has no `python` command, and a venv can be created without one,
-# so never assume it exists: prefer the venv, then fall back to python3.
+#
+# macOS 12.3+ has no `python` command, and a venv is not guaranteed to provide
+# one either, so never assume either name exists: prefer the project venv, then
+# fall back to whatever the system has.
 set -euo pipefail
 
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/.."
 
 PY=""
+IN_VENV=0
 for candidate in .venv/bin/python3 .venv/bin/python; do
-    if [ -x "$candidate" ]; then PY="$candidate"; break; fi
+    if [ -x "$candidate" ]; then PY="$candidate"; IN_VENV=1; break; fi
 done
 if [ -z "$PY" ]; then
     for candidate in python3 python; do
@@ -17,13 +20,28 @@ if [ -z "$PY" ]; then
 fi
 
 if [ -z "$PY" ]; then
-    echo "No Python interpreter found. Install Python 3.9+ from python.org" >&2
+    echo "No Python interpreter found. Install Python 3.9+ from python.org," >&2
+    echo "then re-run scripts/mac-setup.sh." >&2
     exit 1
 fi
 
 if ! "$PY" -c "import yaml, requests" >/dev/null 2>&1; then
-    echo "Missing dependencies - installing into the current interpreter..." >&2
-    "$PY" -m pip install -r requirements.txt
+    if [ "$IN_VENV" = "1" ] || [ -n "${VIRTUAL_ENV:-}" ]; then
+        # Safe: installing into a virtualenv, not the system Python.
+        echo "Installing dependencies into the virtualenv..." >&2
+        "$PY" -m pip install -q -r requirements.txt
+    else
+        # Do NOT pip install into a system interpreter - it is usually refused
+        # (PEP 668) and, where it is allowed, it pollutes the system environment.
+        echo "Dependencies missing and no virtualenv found ($PY)." >&2
+        echo "" >&2
+        echo "  python3 -m venv .venv" >&2
+        echo "  source .venv/bin/activate" >&2
+        echo "  pip install -r requirements.txt" >&2
+        echo "" >&2
+        echo "Or just re-run: bash scripts/mac-setup.sh" >&2
+        exit 1
+    fi
 fi
 
 exec "$PY" -m autowebpost.cli "$@"
