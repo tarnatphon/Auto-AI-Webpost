@@ -72,6 +72,7 @@ Or one shot: `python -m autowebpost.cli run --topic "..." --to githubpages,devto
 | `publish DRAFT --to a,b [--live]` | publish via official APIs (**dry-run default**, drafts where supported) |
 | `queue add/list/remove/run` | drip scheduler with stagger between platforms |
 | `run --topic ... --wait N` | one-shot pipeline with review window |
+| `serve [--host --port]` | local review dashboard: approve drafts before anything publishes |
 | `connect tumblr` | one-time OAuth for Tumblr |
 
 ## Content engine
@@ -112,8 +113,9 @@ The workflow template lives at `.github/workflow-templates/autopost.yml` — `sc
 ## Repo layout
 
 ```
-autowebpost/          the engine (content, images, platforms, profiles, research, scheduler)
-tests/                331 offline tests (pytest) - 96% coverage of autowebpost/
+autowebpost/          the engine (content, images, platforms, profiles, research,
+                      scheduler, review, serve)
+tests/                414 offline tests (pytest) - 94% coverage of autowebpost/
 data/                 catalog (sites.yaml) + persona/config templates + .env.example
 docs/                 research report · SEO/E-E-A-T playbook · compliance rules
 scripts/              mac-setup.sh · sync_local.sh
@@ -121,11 +123,37 @@ output/drafts/        generated drafts + images + checklists (gitignored; exampl
 .github/workflows/    tests.yml (CI for this repo) · autopost.yml (free cloud scheduler)
 ```
 
+## Review dashboard
+
+The human-review gate, as an actual workflow instead of "remember to open the
+markdown". Runs on the stdlib alone — no Flask, nothing new in `requirements.txt`.
+
+```bash
+python -m autowebpost.cli serve            # http://127.0.0.1:8765
+python -m autowebpost.cli serve --allow-live --host 0.0.0.0   # only if you must
+```
+
+For each draft it shows the article preview, the SEO fields and generated
+JSON-LD, every unresolved `EDIT-ME` marker, and the 10-point E-E-A-T checklist —
+with the items it can verify itself marked *verified* (FAQ count, canonical URL,
+meta length, keyword in title, images have alt text…) and the ones only you can
+judge marked as yours. From there you approve or reject, add to the queue, or
+publish.
+
+The gates are enforced server-side, not just hidden in the UI:
+
+- a draft must be **approved** before it can be published at all
+- live publishing is off unless the server was started with `--allow-live`
+- default bind is `127.0.0.1`, so it is not exposed to your network
+
+Review state lives in `review.yaml` next to the article, so it travels with the
+draft.
+
 ## Development
 
 ```bash
 pip install -r requirements-dev.txt
-pytest                                   # 331 tests, fully offline, ~3s
+pytest                                   # 414 tests, fully offline, ~5s
 pytest --cov=autowebpost --cov-report=term-missing
 ```
 
@@ -160,6 +188,19 @@ pip install -e .          # then: autowebpost sites
 | Medium | 🖐 prepared manual import | API retired 2025-26 |
 
 ## Changelog
+
+### 2026-09-04 — review dashboard
+
+`autowebpost serve`: a local web UI (stdlib `http.server`, no new dependencies)
+that turns the human-review gate into a real workflow. Per draft: article
+preview, SEO fields + JSON-LD, every unresolved `EDIT-ME` marker, and the
+10-point E-E-A-T checklist with machine-verifiable items auto-checked. Approve /
+reject / queue / publish from the same screen.
+
+New `autowebpost/review.py` holds the judgement logic (state, marker detection,
+auto-checks) with no HTTP in it, so it is testable in isolation. Gates are
+enforced server-side: a draft must be approved before it can publish, live
+publishing needs `--allow-live`, and the default bind is `127.0.0.1`.
 
 ### 2026-09-04 — hardening pass (+ test suite)
 

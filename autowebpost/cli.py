@@ -236,6 +236,16 @@ def cmd_connect(args):
         print("Available: tumblr")
 
 
+def cmd_serve(args):
+    """Launch the local review dashboard."""
+    from .serve import serve
+
+    serve(host=args.host, port=args.port, allow_live=args.allow_live,
+          drafts_dir=Path(args.drafts) if args.drafts else None,
+          open_browser=not args.no_open)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="autowebpost",
                                  description="AI content engine + free multi-platform auto-publisher (official APIs only)")
@@ -298,6 +308,16 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("connect", help="one-time OAuth connection for a platform")
     s.add_argument("service", choices=["tumblr"])
     s.set_defaults(fn=cmd_connect)
+
+    s = sub.add_parser("serve", help="local review dashboard (approve drafts before publishing)")
+    s.add_argument("--host", default="127.0.0.1",
+                   help="bind address (default 127.0.0.1 - local only)")
+    s.add_argument("--port", type=int, default=8765)
+    s.add_argument("--allow-live", action="store_true",
+                   help="allow real publishing, not just dry runs (default: off)")
+    s.add_argument("--drafts", help="drafts directory (default output/drafts)")
+    s.add_argument("--no-open", action="store_true", help="don't open a browser")
+    s.set_defaults(fn=cmd_serve)
 
     return ap
 
