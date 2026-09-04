@@ -7,6 +7,7 @@ Run without arguments for the command list.
 from __future__ import annotations
 
 import argparse
+import errno
 import json
 import sys
 from datetime import timedelta
@@ -240,9 +241,21 @@ def cmd_serve(args):
     """Launch the local review dashboard."""
     from .serve import serve
 
-    serve(host=args.host, port=args.port, allow_live=args.allow_live,
-          drafts_dir=Path(args.drafts) if args.drafts else None,
-          open_browser=not args.no_open)
+    try:
+        serve(host=args.host, port=args.port, allow_live=args.allow_live,
+              drafts_dir=Path(args.drafts) if args.drafts else None,
+              open_browser=not args.no_open)
+    except OSError as exc:
+        # A raw `OSError: [Errno 48] Address already in use` traceback tells the
+        # user nothing about what to do next, and looks like the tool is broken.
+        if exc.errno == errno.EADDRINUSE:
+            print(f"\n  Port {args.port} is already in use.", file=sys.stderr)
+            print("  Most likely an earlier `serve` is still running.", file=sys.stderr)
+            print(f"  Find it:\n\n    lsof -nP -iTCP:{args.port} -sTCP:LISTEN\n", file=sys.stderr)
+            print(f"  Or just start on a different port:\n"
+                  f"\n    bash bin/autowebpost serve --port {args.port + 1}\n", file=sys.stderr)
+            return 1
+        raise
     return 0
 
 

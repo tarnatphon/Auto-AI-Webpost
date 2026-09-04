@@ -6,11 +6,13 @@ because the test suite blocks `requests` outright - see conftest.)
 """
 from __future__ import annotations
 
+import errno
 import json
 import threading
 import urllib.error
 import urllib.request
 from http.client import HTTPException
+from unittest.mock import patch
 
 import pytest
 
@@ -390,3 +392,56 @@ class TestLauncher:
         body = script.read_text()
         assert ".venv/bin/python3" in body          # venv tried before system
         assert body.index(".venv/bin/python3") < body.index("command -v")
+
+
+class TestPortInUse:
+    """A busy port must produce an actionable message, not an OSError traceback."""
+
+    @staticmethod
+    def _busy_port():
+        import socket
+        s = socket.socket()
+        s.bind(("127.0.0.1", 0))
+        s.listen(1)
+        return s
+
+    def test_busy_port_returns_1_and_explains(self):
+        from autowebpost.cli import build_parser, cmd_serve
+        sock = self._busy_port()
+        try:
+            port = sock.getsockname()[1]
+            args = build_parser().parse_args(["serve", "--port", str(port), "--no-open"])
+            rc = cmd_serve(args)
+            assert rc == 1, "busy port must be a clean failure, not a crash"
+        finally:
+            sock.close()
+
+    def test_busy_port_message_names_the_fix(self, capsys):
+        from autowebpost.cli import build_parser, cmd_serve
+        sock = self._busy_port()
+        try:
+            port = sock.getsockname()[1]
+            args = build_parser().parse_args(["serve", "--port", str(port), "--no-open"])
+            cmd_serve(args)
+        finally:
+            sock.close()
+        err = capsys.readouterr().err
+        assert "already in use" in err
+        assert str(port) in err
+        assert f"--port {port + 1}" in err
+        assert "lsof" in err
+
+    def test_other_oserror_is_not_swallowed(self):
+        """Only EADDRINUSE is handled; anything else must still propagate."""
+        from autowebpost.cli import build_parser, cmd_serve
+        args = build_parser().parse_args(["serve", "--port", "8765", "--no-open"])
+        with patch("autowebpost.serve.serve", side_effect=OSError(errno.EACCES, "denied")):
+            with pytest.raises(OSError):
+                cmd_serve(args)
+
+    def test_cmd_serve_returns_0_on_a_clean_run(self):
+        from autowebpost.cli import build_parser, cmd_serve
+        args = build_parser().parse_args(["serve", "--port", "8765", "--no-open"])
+        with patch("autowebpost.serve.serve") as fake:
+            assert cmd_serve(args) == 0
+        fake.assert_called_once()
