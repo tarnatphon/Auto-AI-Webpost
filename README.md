@@ -35,9 +35,18 @@
 
 ## Quickstart (your Mac)
 
-> **macOS has no `python` command** (Apple removed it in 12.3). Use `python3`,
-> or activate the virtualenv below — inside it, `python` works. Every command in
-> this README assumes you are in the venv.
+> **macOS has no `python` command** (Apple removed it in 12.3), and a venv is
+> not guaranteed to provide one either. The safest way to run anything here is
+> the launcher, which picks the first working interpreter and installs deps if
+> they are missing:
+>
+> ```bash
+> bash bin/autowebpost sites
+> bash bin/autowebpost serve
+> ```
+>
+> Otherwise use `python3`, or activate the venv (`source .venv/bin/activate`)
+> and use `python`. Every command below works with either.
 
 ```bash
 # 1. one-time setup
@@ -134,8 +143,7 @@ The human-review gate, as an actual workflow instead of "remember to open the
 markdown". Runs on the stdlib alone — no Flask, nothing new in `requirements.txt`.
 
 ```bash
-python3 -m autowebpost.cli serve              # http://127.0.0.1:8765
-python3 -m autowebpost.cli serve --allow-live # only if you really mean it
+bash bin/autowebpost serve
 ```
 
 (Or `pip install -e .` once, then just `autowebpost serve` — see Development.)
@@ -198,7 +206,9 @@ pip install -e .          # then: autowebpost sites
 
 | Symptom | Cause / fix |
 |---|---|
-| `zsh: command not found: python` | macOS 12.3+ has no `python`. Use `python3`, or `source .venv/bin/activate` first. |
+| `zsh: command not found: python` | macOS 12.3+ has no `python`. Use `bash bin/autowebpost ...`, or `python3`, or `source .venv/bin/activate`. |
+| `zsh: command not found: #` | Your shell has interactive comments off, so `# notes` in a pasted block run as commands. Paste commands without comments, or `setopt INTERACTIVE_COMMENTS`. |
+| `error: Your local changes ... would be overwritten by checkout` | Commit or stash first: `git stash push -m "wip" <files>`. Never `git checkout --` on work you have not read. |
 | `ModuleNotFoundError: No module named 'yaml'` | Deps not installed: `pip install -r requirements.txt` (or `pip3` outside a venv). |
 | `unknown command: serve` | Your folder is behind. `serve` is in PR #2 — merge it, or `git fetch origin && git checkout arena/01a06ae5-auto-ai-webpost`. |
 | Setup script targets the wrong folder | It defaults to `/Volumes/AI/Auto AI WebPost`. Override: `export LOCAL_DIR="/Volumes/AI-1/Auto AI WebPost"`. |

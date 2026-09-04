@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Launcher that finds a working interpreter.
+# macOS 12.3+ has no `python` command, and a venv can be created without one,
+# so never assume it exists: prefer the venv, then fall back to python3.
+set -euo pipefail
+
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/.."
+
+PY=""
+for candidate in .venv/bin/python3 .venv/bin/python; do
+    if [ -x "$candidate" ]; then PY="$candidate"; break; fi
+done
+if [ -z "$PY" ]; then
+    for candidate in python3 python; do
+        if command -v "$candidate" >/dev/null 2>&1; then PY="$candidate"; break; fi
+    done
+fi
+
+if [ -z "$PY" ]; then
+    echo "No Python interpreter found. Install Python 3.9+ from python.org" >&2
+    exit 1
+fi
+
+if ! "$PY" -c "import yaml, requests" >/dev/null 2>&1; then
+    echo "Missing dependencies - installing into the current interpreter..." >&2
+    "$PY" -m pip install -r requirements.txt
+fi
+
+exec "$PY" -m autowebpost.cli "$@"
