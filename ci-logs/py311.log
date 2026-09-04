@@ -1,0 +1,92 @@
+============================= test session starts ==============================
+platform linux -- Python 3.11.16, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/runner/work/Auto-AI-Webpost/Auto-AI-Webpost
+configfile: pyproject.toml
+plugins: cov-7.1.0
+collected 330 items
+
+tests/test_catalog.py .................                                  [  5%]
+tests/test_cli.py ...........................                            [ 13%]
+tests/test_config.py ...................                                 [ 19%]
+tests/test_drafts.py ...............                                     [ 23%]
+tests/test_engine.py .................................                   [ 33%]
+tests/test_htmlutil.py .......................                           [ 40%]
+tests/test_images.py ..............                                      [ 44%]
+tests/test_models.py ..................                                  [ 50%]
+tests/test_persona.py ...................                                [ 56%]
+tests/test_platforms.py ................................................ [ 70%]
+.....                                                                    [ 72%]
+tests/test_publish_live.py .........................                     [ 79%]
+tests/test_research.py ...........                                       [ 83%]
+tests/test_scheduler.py ....................F                            [ 89%]
+tests/test_seo.py ..........................                             [ 97%]
+tests/test_tumblr_connect.py .........                                   [100%]
+
+=================================== FAILURES ===================================
+________ TestRunDue.test_live_run_marks_published_only_when_all_succeed ________
+
+self = <test_scheduler.TestRunDue object at 0x7f7cfc5e6d10>
+tmp_path = PosixPath('/tmp/pytest-of-runner/pytest-0/test_live_run_marks_published_0')
+
+    def test_live_run_marks_published_only_when_all_succeed(self, tmp_path):
+        from autowebpost.models import ArticleDraft
+        folder = tmp_path / "d"; folder.mkdir()
+        (folder / "article.md").write_text(
+            ArticleDraft(title="T", slug="t", body_markdown="b").to_markdown(), encoding="utf-8")
+        add(draft=str(folder / "article.md"), platforms=["telegraph"], at="2000-01-01 09:00")
+        # no credentials in the environment -> live publish fails cleanly
+        done = scheduler.run_due(live=True)
+>       assert done and done[0]["status"] == "failed"
+E       AssertionError: assert ([{'id': 'c66198d1', 'draft': '/tmp/pytest-of-runner/pytest-0/test_live_run_marks_published_0/d/article.md', 'platforms': ['telegraph'], 'publish_at': '2000-01-01 09:00', ...}] and 'published' == 'failed'
+E         
+E         - failed
+E         + published)
+
+tests/test_scheduler.py:160: AssertionError
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.11.16-final-0 _______________
+
+Name                                    Stmts   Miss  Cover   Missing
+---------------------------------------------------------------------
+autowebpost/__init__.py                     1      0   100%
+autowebpost/catalog.py                     44      0   100%
+autowebpost/cli.py                        238     13    95%   46, 73-85, 185, 210-212, 232-236, 319
+autowebpost/config.py                      49      1    98%   79
+autowebpost/content/__init__.py             3      0   100%
+autowebpost/content/eeat.py                20      2    90%   25, 36
+autowebpost/content/engine.py             184     26    86%   50, 57-60, 63-74, 86-101, 200, 227, 260, 324, 343, 371, 383
+autowebpost/content/prompts.py              7      0   100%
+autowebpost/content/seo.py                 59      1    98%   62
+autowebpost/drafts.py                      31      0   100%
+autowebpost/images/__init__.py              2      0   100%
+autowebpost/images/provider.py             38      0   100%
+autowebpost/models.py                     108      0   100%
+autowebpost/platforms/__init__.py           3      0   100%
+autowebpost/platforms/base.py              39      2    95%   48-49
+autowebpost/platforms/blogger.py           23      0   100%
+autowebpost/platforms/devto.py             18      0   100%
+autowebpost/platforms/github_pages.py      29      0   100%
+autowebpost/platforms/hashnode.py          23      0   100%
+autowebpost/platforms/htmlutil.py         121      3    98%   139-142
+autowebpost/platforms/mastodon.py          49      5    90%   24, 27, 32, 60, 64
+autowebpost/platforms/medium.py            12      0   100%
+autowebpost/platforms/registry.py          23      0   100%
+autowebpost/platforms/telegraph.py         36      1    97%   25
+autowebpost/platforms/tumblr.py            69      0   100%
+autowebpost/platforms/wordpress.py         25      0   100%
+autowebpost/platforms/writeas.py           27      0   100%
+autowebpost/profiles/__init__.py            5      0   100%
+autowebpost/profiles/persona.py            19      1    95%   30
+autowebpost/profiles/registration.py       45      0   100%
+autowebpost/profiles/vault.py              47      0   100%
+autowebpost/research/__init__.py            2      0   100%
+autowebpost/research/keywords.py           27      0   100%
+autowebpost/scheduler.py                   72      0   100%
+---------------------------------------------------------------------
+TOTAL                                    1498     55    96%
+=========================== short test summary info ============================
+FAILED tests/test_scheduler.py::TestRunDue::test_live_run_marks_published_only_when_all_succeed - AssertionError: assert ([{'id': 'c66198d1', 'draft': '/tmp/pytest-of-runner/pytest-0/test_live_run_marks_published_0/d/article.md', 'platforms': ['telegraph'], 'publish_at': '2000-01-01 09:00', ...}] and 'published' == 'failed'
+  
+  - failed
+  + published)
+======================== 1 failed, 329 passed in 6.79s =========================
