@@ -9,12 +9,29 @@ import sys
 from pathlib import Path
 
 import pytest
+import requests
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from autowebpost.models import ArticleDraft, FAQItem, ImageAsset, Persona  # noqa: E402
 from autowebpost.profiles.persona import load_persona  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def no_network(monkeypatch):
+    """Hard-block real HTTP for every test.
+
+    This is a safety rail, not just hygiene: Telegra.ph needs no API key at all,
+    so a test that reached the live publish path on a networked machine (CI) would
+    silently create a real public page. Anything that wants HTTP must stub
+    requests.get/post/put itself.
+    """
+    def blocked(*args, **kwargs):
+        raise RuntimeError(
+            "network access is blocked in tests - stub requests.get/post/put instead")
+
+    monkeypatch.setattr(requests.sessions.Session, "request", blocked)
 
 
 @pytest.fixture

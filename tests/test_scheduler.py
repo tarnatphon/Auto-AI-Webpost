@@ -72,6 +72,28 @@ class TestRemove:
         assert [x["id"] for x in scheduler.entries()] == [keep["id"]]
 
 
+def stub_telegraph(monkeypatch, ok=True):
+    """Stub the two Telegra.ph calls (createAccount + createPage).
+
+    Telegraph is the one platform that publishes with zero credentials, so any
+    live-path test involving it MUST stub HTTP or it hits the real site.
+    """
+    class FakeResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            if ok:
+                return {"ok": True, "result": {"url": "https://telegra.ph/Test-09-04"}}
+            return {"ok": False, "error": "STUBBED_FAILURE"}
+
+    monkeypatch.setenv("TELEGRAPH_TOKEN", "stub-token")
+    monkeypatch.setattr("requests.get", lambda *a, **k: FakeResponse())
+    monkeypatch.setattr("requests.post", lambda *a, **k: FakeResponse())
+
+
 class TestRunDue:
     def test_nothing_due_when_scheduled_in_the_future(self, tmp_path):
         add(at="2030-01-01 09:00")
@@ -149,12 +171,25 @@ class TestRunDue:
         results = scheduler.run_due(live=False)[0]["results"]
         assert any("staggered" in r.get("note", "") for r in results)
 
-    def test_live_run_marks_published_only_when_all_succeed(self, tmp_path):
+    def _draft(self, tmp_path):
         from autowebpost.models import ArticleDraft
         folder = tmp_path / "d"; folder.mkdir()
-        (folder / "article.md").write_text(
-            ArticleDraft(title="T", slug="t", body_markdown="b").to_markdown(), encoding="utf-8")
-        add(draft=str(folder / "article.md"), platforms=["telegraph"], at="2000-01-01 09:00")
-        # no credentials in the environment -> live publish fails cleanly
+        path = folder / "article.md"
+        path.write_text(ArticleDraft(title="T", slug="t",
+                                     body_markdown="b").to_markdown(), encoding="utf-8")
+        return str(path)
+
+    def test_live_run_marks_published_when_every_platform_succeeds(self, tmp_path,
+                                                                   monkeypatch):
+        """Telegraph needs no credentials, so its live path would really post to
+        telegra.ph - stub the HTTP instead of relying on the sandbox being offline."""
+        stub_telegraph(monkeypatch, ok=True)
+        add(draft=self._draft(tmp_path), platforms=["telegraph"], at="2000-01-01 09:00")
+        done = scheduler.run_due(live=True)
+        assert done and done[0]["status"] == "published"
+
+    def test_live_run_marks_failed_when_a_platform_errors(self, tmp_path, monkeypatch):
+        stub_telegraph(monkeypatch, ok=False)
+        add(draft=self._draft(tmp_path), platforms=["telegraph"], at="2000-01-01 09:00")
         done = scheduler.run_due(live=True)
         assert done and done[0]["status"] == "failed"

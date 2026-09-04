@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: tests-${{ github.ref }}
@@ -40,39 +40,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
 
-      - name: Environment
-        run: |
-          python -VV
-          pip list
-          locale
-          echo "CI=$CI GITHUB_ACTIONS=$GITHUB_ACTIONS"
-
       - name: Run tests
         run: |
           set -o pipefail
-          pytest tests/ --cov=autowebpost --cov-report=term-missing -v --tb=long 2>&1 | tee pytest.log
+          pytest tests/ --cov=autowebpost --cov-report=term-missing --tb=short 2>&1 | tee pytest.log
 
       - name: Upload test log
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: pytest-log-py${{ matrix.python-version }}
           path: pytest.log
-
-      - name: Publish test log to the branch (debug)
-        if: failure() && matrix.python-version == '3.11'
-        run: |
-          git config user.name "ci-debug"
-          git config user.email "ci@debug.local"
-          mkdir -p ci-logs
-          cp pytest.log ci-logs/py311.log
-          git add ci-logs
-          git diff --cached --quiet && exit 0
-          git commit -m "ci: test log (debug) [skip ci]"
-          for i in 1 2 3; do
-            git pull --rebase origin "${GITHUB_HEAD_REF}" && git push origin "HEAD:${GITHUB_HEAD_REF}" && break
-            sleep 5
-          done
 
       - name: Smoke-test the CLI (offline)
         env:
