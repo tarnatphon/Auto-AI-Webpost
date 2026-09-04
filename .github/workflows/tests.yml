@@ -40,8 +40,24 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
 
+      - name: Environment
+        run: |
+          python -VV
+          pip list
+          locale
+          echo "CI=$CI GITHUB_ACTIONS=$GITHUB_ACTIONS"
+
       - name: Run tests
-        run: pytest tests/ --cov=autowebpost --cov-report=term-missing
+        run: |
+          set -o pipefail
+          pytest tests/ --cov=autowebpost --cov-report=term-missing -v --tb=long 2>&1 | tee pytest.log
+
+      - name: Upload test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-log-py${{ matrix.python-version }}
+          path: pytest.log
 
       - name: Smoke-test the CLI (offline)
         env:
