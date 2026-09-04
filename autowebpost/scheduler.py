@@ -17,21 +17,19 @@ import uuid
 from datetime import datetime
 from typing import List, Optional
 
-from .config import DATA_DIR, load_yaml, save_yaml
+from .config import DATA_DIR, load_yaml, save_yaml, utc_now, utc_stamp
 
 QUEUE_FILE = DATA_DIR / "queue.yaml"
 
 
 def _queue() -> list:
-    return load_yaml(QUEUE_FILE) if QUEUE_FILE.exists() else []
+    # An empty/whitespace queue file parses as None - treat that as empty.
+    return (load_yaml(QUEUE_FILE) if QUEUE_FILE.exists() else None) or []
 
 
 def add(draft: str, platforms: List[str], publish_at: str, delay_minutes: int = 0) -> dict:
     q = _queue()
-    if publish_at:
-        when = publish_at
-    else:
-        when = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
+    when = publish_at or utc_stamp()
     entry = {
         "id": str(uuid.uuid4())[:8],
         "draft": str(draft),
@@ -65,7 +63,11 @@ def run_due(live: bool = False, now: Optional[datetime] = None) -> List[dict]:
     from .platforms import get_many
     from .profiles import load_persona
 
-    now = now or datetime.utcnow()
+    now = now or utc_now()
+    # publish_at is stored as a naive UTC string; normalise so comparisons hold
+    # whether the caller passed an aware datetime (tests) or not.
+    if now.tzinfo is not None:
+        now = now.replace(tzinfo=None)
     q = _queue()
     done = []
     persona = load_persona()
@@ -87,14 +89,28 @@ def run_due(live: bool = False, now: Optional[datetime] = None) -> List[dict]:
             continue
         results = []
         delay = int(e.get("delay_minutes", 0))
+        failed = False
         for i, plat in enumerate(e["platforms"]):
             if delay and i > 0:
                 # within one run we still post all platforms, but note the intended stagger
                 results.append({"platform": plat, "note": f"staggered +{delay * i}min recommended"})
-            pub = get_many(plat)[0]
+            try:
+                pub = get_many(plat)[0]
+            except KeyError as ex:
+                # One bad slug must not abort the whole queue run.
+                failed = True
+                results.append({"platform": plat, "ok": False, "url": "",
+                                "detail": str(ex).strip("'\""), "dry_run": not live})
+                continue
             r = pub.publish(draft, persona, live=live)
             results.append({"platform": plat, "ok": r.ok, "url": r.url, "detail": r.detail[:200], "dry_run": r.dry_run})
-        e["status"] = "published" if live else "simulated"
+            failed = failed or not r.ok
+        # 'failed' (not 'published') if anything errored, so nothing is silently
+        # marked done and skipped forever.
+        if failed:
+            e["status"] = "failed"
+        else:
+            e["status"] = "published" if live else "simulated"
         e["results"] = results
         done.append(e)
     if done:

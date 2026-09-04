@@ -9,14 +9,14 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 
 from . import __version__
 from .catalog import load_sites, sites_table
-from .config import ROOT, load_config
-from .content.eeat import eeat_qa_checklist
+from .config import load_config, utc_now, utc_stamp
 from .content.engine import Brief, ContentEngine, make_provider
+from .drafts import draft_folder, save_draft
 from .platforms import get_many
 from .profiles import RegistrationAssistant, Vault, load_persona
 from .profiles.persona import bootstrap as bootstrap_persona
@@ -39,15 +39,33 @@ def cmd_research(args):
     if args.expand:
         data = expand(args.keyword)
         print("\nLONG-TAIL (alphabet expansion):")
-        for s in data["alphabet"]:
-            print("  -", s)
+        printed = _print_suggestions(data["alphabet"])
         print("\nQUESTION KEYWORDS (FAQ gold):")
-        for s in data["questions"]:
-            print("  -", s)
+        printed += _print_suggestions(data["questions"])
+        if not printed:
+            _research_offline_hint()
     else:
-        for s in suggest(args.keyword):
-            print("  -", s)
+        if not _print_suggestions(suggest(args.keyword)):
+            _research_offline_hint()
     print()
+
+
+def _print_suggestions(items) -> int:
+    """Print a bullet list of suggestions; return how many were printed."""
+    n = 0
+    for s in items or []:
+        print("  -", s)
+        n += 1
+    return n
+
+
+def _research_offline_hint():
+    """Keyword research is 100% network-dependent - never fail silently."""
+    print("  (no suggestions returned)")
+    print("\n  Both suggestion sources (Google Autocomplete, DuckDuckGo) failed.")
+    print("  Most likely: no internet connection, or the endpoints are blocked by")
+    print("  a proxy/firewall. Check your connection and retry: ")
+    print(f"    python -m autowebpost.cli research \"<keyword>\"")
 
 
 def cmd_persona(args):
@@ -81,8 +99,9 @@ def cmd_register(args):
         return
     if args.mark:
         slug, _, status = args.mark.partition(":")
-        vault.set_status(slug.strip(), status.strip() or "registered")
-        print(f"Marked {slug} -> {status or 'registered'}")
+        slug, status = slug.strip(), status.strip() or "registered"
+        vault.set_status(slug, status)
+        print(f"Marked {slug} -> {status}")
         return
     persona = load_persona()
     assistant = RegistrationAssistant(persona, vault)
@@ -123,18 +142,15 @@ def cmd_generate(args):
         word_target=args.words,
         references=refs,
     )
-    draft = engine.generate(brief, generate_images=not args.no_images)
-    folder = ROOT / "output" / "drafts" / (datetime.utcnow().date().isoformat() + "-" + draft.slug)
-    folder.mkdir(parents=True, exist_ok=True)
+    # Text first: the draft folder is named after the slug, which only exists
+    # once the draft is generated. Images are then generated INTO that folder,
+    # so article.md and its images/ subfolder can never drift apart.
+    draft = engine.generate(brief, generate_images=False)
+    folder = draft_folder(draft.slug)
+    if not args.no_images:
+        engine.attach_images(draft, folder)
+    folder = save_draft(draft, persona, folder=folder)
     path = folder / "article.md"
-    path.write_text(draft.to_markdown(), encoding="utf-8")
-
-    # side-car files that platforms ingest separately
-    (folder / "seo.jsonld.txt").write_text(
-        json.dumps({"article": draft.meta_description, "title": draft.title}, indent=2), encoding="utf-8")
-    (folder / "review-checklist.md").write_text(
-        "# E-E-A-T review checklist (do this BEFORE publishing)\n\n"
-        + "\n".join(f"- [ ] {c}" for c in eeat_qa_checklist()), encoding="utf-8")
 
     print(f"\nDraft written -> {path}")
     print(f"  title : {draft.title}")
@@ -143,6 +159,9 @@ def cmd_generate(args):
     print(f"  tags  : {', '.join(draft.tags)}")
     print(f"  images: {len(draft.images)} generated" if draft.images else "  images: none (use --no-images? they may have failed)")
     print(f"  faq   : {len(draft.faq)} questions | words: {len(draft.body_markdown.split())}")
+    schema = "BlogPosting + FAQPage" if draft.faq else "BlogPosting"
+    print(f"  refs  : {len(draft.references)} | schema: {schema} -> seo.jsonld.txt")
+    print(f"\nFiles: article.md · seo.jsonld.txt · review-checklist.md · images/")
     print(f"\nNext:\n  1. Edit the draft (remove every EDIT-ME marker)")
     print(f"  2. python -m autowebpost.cli publish {path} --to telegraph,devto   (dry run)")
     print(f"  3. add --live when the checklist passes\n")
@@ -199,8 +218,11 @@ def cmd_run(args):
     args.secondary, args.angle, args.words = "", "practical, experience-based how-to", 1400
     args.references, args.no_images = "", False
     path = cmd_generate(args)
-    if args.wait:
-        when = (datetime.utcnow() + timedelta(minutes=int(args.wait))).strftime("%Y-%m-%d %H:%M")
+    # `--wait` arrives as a string; "0" is truthy, so compare numerically -
+    # otherwise the documented default silently queued for immediate publishing.
+    wait_minutes = int(args.wait or 0)
+    if wait_minutes > 0:
+        when = (utc_now() + timedelta(minutes=wait_minutes)).strftime("%Y-%m-%d %H:%M")
         queue_add(str(path), [p.strip() for p in args.to.split(",")], when)
         print(f"Queued for {when} -> platforms: {args.to}")
         print("The wait is your HUMAN REVIEW window. The queue will not fix bad content for you.")
@@ -286,7 +308,11 @@ def main(argv=None):
     if not getattr(args, "fn", None):
         ap.print_help()
         return 0
-    return args.fn(args) or 0
+    rv = args.fn(args)
+    # Sub-commands may return a Path (e.g. `generate` hands its draft path to
+    # `run`). sys.exit() would treat that as a failure message and exit 1, so
+    # normalise to a process exit code here.
+    return rv if isinstance(rv, int) else 0
 
 
 if __name__ == "__main__":

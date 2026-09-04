@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import pathlib
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import yaml
@@ -14,6 +15,25 @@ import yaml
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
 OUTPUT_DIR = ROOT / "output"
+
+
+def utc_now() -> datetime:
+    """Timezone-aware UTC 'now'.
+
+    Replaces the deprecated (and naive) ``datetime.utcnow()``; keeping this in
+    one place means the queue, the draft folders and the GitHub Pages filename
+    all agree on what "today" means.
+    """
+    return datetime.now(timezone.utc)
+
+
+def utc_today_iso() -> str:
+    return utc_now().date().isoformat()
+
+
+def utc_stamp() -> str:
+    """'YYYY-MM-DD HH:MM' in UTC - the format the queue file stores."""
+    return utc_now().strftime("%Y-%m-%d %H:%M")
 
 
 def load_env(path: Optional[pathlib.Path] = None) -> None:

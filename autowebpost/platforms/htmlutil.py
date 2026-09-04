@@ -107,13 +107,20 @@ def html_to_telegraph_nodes(html_str: str) -> List[Dict]:
             nodes.append({"tag": "hr"})
         elif tag in ("ul", "ol"):
             items = re.findall(r"<li>(.*?)</li>", inner, re.S)
-            nodes.append({"tag": tag, "children": [{"tag": "li", "children": [_t(x)]} for x in items]})
+            nodes.append({"tag": tag, "children": [{"tag": "li", "children": _t(x)} for x in items]})
         elif tag == "pre":
-            nodes.append({"tag": "pre", "children": [_t(re.sub(r"<[^>]+>", "", inner))]})
+            nodes.append({"tag": "pre", "children": _t(re.sub(r"<[^>]+>", "", inner))})
         else:
-            nodes.append({"tag": tag, "children": [_t(inner)]})
-    # drop images that point at local files (telegraph needs public URLs)
-    return [n for n in nodes if not (n.get("tag") == "img" and n["attrs"]["src"].startswith(("output/", "./", "/")))]
+            nodes.append({"tag": tag, "children": _t(inner)})
+    # Telegraph can only render publicly reachable images; a relative or
+    # filesystem path would ship as a broken <img>, so drop it instead.
+    return [n for n in nodes if not (n.get("tag") == "img" and not _is_remote(n["attrs"]["src"]))]
+
+
+def _is_remote(src: str) -> bool:
+    """True only for sources a remote reader can actually fetch."""
+    src = (src or "").strip()
+    return src.startswith(("http://", "https://", "//"))
 
 
 def _t(fragment: str) -> Dict:

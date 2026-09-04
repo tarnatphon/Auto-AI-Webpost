@@ -77,8 +77,14 @@ Or one shot: `python -m autowebpost.cli run --topic "..." --to githubpages,devto
 ## Content engine
 
 - **Providers:** `pollinations` (free, no key — default) · `openai` (any OpenAI-compatible endpoint: OpenAI, OpenRouter, Groq, Ollama, LM Studio) · `template` (offline scaffold, always works). Auto-falls back to template if the network provider fails.
-- **Images:** Flux via Pollinations (free, keyless), prompt-derived per article, with SEO alt text.
-- Every draft ships with `review-checklist.md` — the 10-point E-E-A-T gate. `publish` refuses to feel safe until you've been through it.
+- Force a provider for one run (or in CI) without editing `data/config.yaml`:
+
+  ```bash
+  AUTOWEBPOST_PROVIDER=template python -m autowebpost.cli generate --topic "..." --no-images
+  ```
+
+- **Images:** Flux via Pollinations (free, keyless), prompt-derived per article, with SEO alt text. Images are written to `<draft-folder>/images/` and referenced by **relative** path, so a draft stays portable between your Mac and CI.
+- Every draft ships with `seo.jsonld.txt` (real `BlogPosting` + `FAQPage` structured data) and `review-checklist.md` — the 10-point E-E-A-T gate. `publish` refuses to feel safe until you've been through it.
 
 ## Free publishing targets (August 2026, researched)
 
@@ -107,11 +113,32 @@ The workflow template lives at `.github/workflow-templates/autopost.yml` — `sc
 
 ```
 autowebpost/          the engine (content, images, platforms, profiles, research, scheduler)
+tests/                328 offline tests (pytest) - 96% coverage of autowebpost/
 data/                 catalog (sites.yaml) + persona/config templates + .env.example
 docs/                 research report · SEO/E-E-A-T playbook · compliance rules
 scripts/              mac-setup.sh · sync_local.sh
 output/drafts/        generated drafts + images + checklists (gitignored; example committed)
-.github/workflows/    free cloud scheduler
+.github/workflows/    tests.yml (CI for this repo) · autopost.yml (free cloud scheduler)
+```
+
+## Development
+
+```bash
+pip install -r requirements-dev.txt
+pytest                                   # 328 tests, fully offline, ~3s
+pytest --cov=autowebpost --cov-report=term-missing
+```
+
+The suite never touches the network or a real account: every HTTP call is
+mocked, the queue and draft folders are redirected to `tmp_path`, and the live
+`_publish_live` path is exercised with canned responses so adapter bugs surface
+before they reach your accounts. CI (`.github/workflows/tests.yml`) runs the
+suite plus a CLI smoke test on Python 3.9–3.13.
+
+Install it as a package instead of running from a clone:
+
+```bash
+pip install -e .          # then: autowebpost sites
 ```
 
 ## Status of integrations (Aug 2026)
@@ -128,3 +155,29 @@ output/drafts/        generated drafts + images + checklists (gitignored; exampl
 | Write.as | ✅ optional account | anonymous OK |
 | Hashnode | ⚠️ Pro now ($5/mo, May 2026) | adapter present, flagged |
 | Medium | 🖐 prepared manual import | API retired 2025-26 |
+
+## Changelog
+
+### 2026-09-04 — hardening pass (+ test suite)
+
+Bugs found by reading and running every code path, each now covered by a
+regression test:
+
+| Bug | Effect |
+|---|---|
+| `seo.jsonld.txt` was a 2-key stub | README promised `BlogPosting`/`FAQPage` JSON-LD per article; nothing was ever generated. Now real structured data, per schema type. |
+| FAQ content destroyed on generate | The engine replaced the body's FAQ section with `<!-- faq-rendered-below -->` and never rendered it back — every published copy shipped an **empty FAQ** and lost the snippet content. |
+| Images written to the wrong folder | Images went to `output/drafts/<slug>/images/` while the article went to `output/drafts/<date>-<slug>/`, so **every image reference was broken**. Images now land beside the article and use relative paths. |
+| Telegraph `children` double-nested | Nodes were emitted as `[[...]]`; Telegraph only accepts a flat list, so live pages would have been rejected. |
+| Local images sent to Telegraph | Only `output/`, `./` and `/` prefixes were filtered — relative `images/hero.jpg` shipped as a broken `<img>`. Any non-`http(s)` source is now dropped. |
+| `--references` silently ignored | Unfilled `EDIT-ME` placeholders counted as "references present", so your real sources were dropped. Placeholders are filtered and your sources are rendered into the body. |
+| `research` failed silently | Both suggestion sources failing printed an empty list and exited 0. Now reports the connectivity problem. |
+| `generate` exited with status 1 | `sys.exit()` was handed a `Path`, so a **successful** run reported failure. Exit codes are now normalised. |
+| One bad platform slug killed the queue | `run_due` raised `KeyError` and aborted the whole run; unknown slugs now fail just that entry. |
+| `--wait 0` still queued | `"0"` is a truthy string, so the documented default queued for immediate publishing instead of not queueing. |
+| Hero image alt text was the bare keyword | Alt text is now the author's `[IMAGE: ...]` description, or a descriptive phrase — not keyword stuffing. |
+| `datetime.utcnow()` | Deprecated in 3.12+ and naive; replaced with a single timezone-aware helper. |
+
+Also: `data/queue.yaml` parsing tolerates an empty/null file, `ImageAsset` ignores
+unknown front-matter keys instead of making a draft unpublishable, and the
+`register --list` hint no longer points at the command you just ran.
