@@ -62,7 +62,9 @@ class Vault:
     def status_table(self) -> str:
         st = self.all_status()
         if not st:
-            return "No registrations tracked yet. Run: autowebpost register --list"
+            return ("No registrations tracked yet.\n"
+                    "Next: python -m autowebpost.cli register githubpages devto telegraph\n"
+                    "      (add --open to open each signup page in your browser)")
         rows = [("SITE", "STATUS", "DETAIL")]
         rows += [(k, v.get("status", "?"), (v.get("detail", "") or "")[:50]) for k, v in sorted(st.items())]
         w = [max(len(r[i]) for r in rows) for i in range(3)]

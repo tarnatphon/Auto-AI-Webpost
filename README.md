@@ -35,10 +35,24 @@
 
 ## Quickstart (your Mac)
 
+> **macOS has no `python` command** (Apple removed it in 12.3), and a venv is
+> not guaranteed to provide one either. The safest way to run anything here is
+> the launcher, which picks the first working interpreter and installs deps if
+> they are missing:
+>
+> ```bash
+> bash bin/autowebpost sites
+> bash bin/autowebpost serve
+> ```
+>
+> Otherwise use `python3`, or activate the venv (`source .venv/bin/activate`)
+> and use `python`. Every command below works with either.
+
 ```bash
-# 1. one-time setup of /Volumes/AI/Auto AI WebPost
+# 1. one-time setup
+export LOCAL_DIR="/Volumes/AI-1/Auto AI WebPost"   # only if not /Volumes/AI/Auto AI WebPost
 bash scripts/mac-setup.sh
-cd "/Volumes/AI/Auto AI WebPost" && source .venv/bin/activate
+cd "$LOCAL_DIR" && source .venv/bin/activate
 
 # 2. your identity (powers E-E-A-T + signup pre-fill)
 python -m autowebpost.cli persona --init
@@ -72,13 +86,22 @@ Or one shot: `python -m autowebpost.cli run --topic "..." --to githubpages,devto
 | `publish DRAFT --to a,b [--live]` | publish via official APIs (**dry-run default**, drafts where supported) |
 | `queue add/list/remove/run` | drip scheduler with stagger between platforms |
 | `run --topic ... --wait N` | one-shot pipeline with review window |
+| `serve [--host --port]` | local review dashboard: approve drafts before anything publishes |
 | `connect tumblr` | one-time OAuth for Tumblr |
 
 ## Content engine
 
-- **Providers:** `pollinations` (free, no key — default) · `openai` (any OpenAI-compatible endpoint: OpenAI, OpenRouter, Groq, Ollama, LM Studio) · `template` (offline scaffold, always works). Auto-falls back to template if the network provider fails.
-- **Images:** Flux via Pollinations (free, keyless), prompt-derived per article, with SEO alt text.
-- Every draft ships with `review-checklist.md` — the 10-point E-E-A-T gate. `publish` refuses to feel safe until you've been through it.
+- **Providers:** `pollinations` (free, no key — default) · `gemini` (Gemini 2.5 Flash, free tier) · `openai` (any OpenAI-compatible endpoint: OpenAI, OpenRouter, Groq, Ollama, LM Studio) · `template` (offline scaffold, always works). Auto-falls back to template if the network provider fails.
+
+  Set `provider: gemini` in `data/config.yaml` and put `GEMINI_API_KEY=...` in `.env` (get one at aistudio.google.com/apikey).
+- Force a provider for one run (or in CI) without editing `data/config.yaml`:
+
+  ```bash
+  AUTOWEBPOST_PROVIDER=template python -m autowebpost.cli generate --topic "..." --no-images
+  ```
+
+- **Images:** Flux via Pollinations (free, keyless), prompt-derived per article, with SEO alt text. Images are written to `<draft-folder>/images/` and referenced by **relative** path, so a draft stays portable between your Mac and CI.
+- Every draft ships with `seo.jsonld.txt` (real `BlogPosting` + `FAQPage` structured data) and `review-checklist.md` — the 10-point E-E-A-T gate. `publish` refuses to feel safe until you've been through it.
 
 ## Free publishing targets (August 2026, researched)
 
@@ -106,12 +129,64 @@ The workflow template lives at `.github/workflow-templates/autopost.yml` — `sc
 ## Repo layout
 
 ```
-autowebpost/          the engine (content, images, platforms, profiles, research, scheduler)
+autowebpost/          the engine (content, images, platforms, profiles, research,
+                      scheduler, review, serve)
+tests/                435 offline tests (pytest) - 95% coverage of autowebpost/
 data/                 catalog (sites.yaml) + persona/config templates + .env.example
 docs/                 research report · SEO/E-E-A-T playbook · compliance rules
 scripts/              mac-setup.sh · sync_local.sh
 output/drafts/        generated drafts + images + checklists (gitignored; example committed)
-.github/workflows/    free cloud scheduler
+.github/workflows/    tests.yml (CI for this repo) · autopost.yml (free cloud scheduler)
+```
+
+## Review dashboard
+
+The human-review gate, as an actual workflow instead of "remember to open the
+markdown". Runs on the stdlib alone — no Flask, nothing new in `requirements.txt`.
+
+```bash
+bash bin/autowebpost serve
+```
+
+(Or `pip install -e .` once, then just `autowebpost serve` — see Development.)
+
+For each draft it shows the article preview, the SEO fields and generated
+JSON-LD, every unresolved `EDIT-ME` marker, and the 10-point E-E-A-T checklist —
+with the items it can verify itself marked *verified* (FAQ count, canonical URL,
+meta length, keyword in title, images have alt text…) and the ones only you can
+judge marked as yours. From there you approve or reject, add to the queue, or
+publish.
+
+The gates are enforced server-side, not just hidden in the UI:
+
+- a draft must be **approved** before it can be published at all
+- live publishing is off unless the server was started with `--allow-live`
+- default bind is `127.0.0.1`, so it is not exposed to your network
+
+Review state lives in `review.yaml` next to the article, so it travels with the
+draft.
+
+## Development
+
+```bash
+pip install -r requirements-dev.txt
+pytest                                   # 435 tests, fully offline, ~5s
+pytest --cov=autowebpost --cov-report=term-missing
+```
+
+The suite never touches the network or a real account. An autouse fixture in
+`tests/conftest.py` **hard-blocks `requests`**, so a test cannot accidentally
+publish: Telegra.ph needs no API key at all, so on a networked machine a stray
+`live=True` would create a real public page. HTTP is mocked, the queue and draft
+folders are redirected to `tmp_path`, and the live `_publish_live` path is
+exercised with canned responses so adapter bugs surface before they reach your
+accounts. CI (`.github/workflows/tests.yml`) runs the suite plus a CLI smoke
+test on Python 3.9–3.14.
+
+Install it as a package instead of running from a clone:
+
+```bash
+pip install -e .          # then: autowebpost sites
 ```
 
 ## Status of integrations (Aug 2026)
@@ -128,3 +203,68 @@ output/drafts/        generated drafts + images + checklists (gitignored; exampl
 | Write.as | ✅ optional account | anonymous OK |
 | Hashnode | ⚠️ Pro now ($5/mo, May 2026) | adapter present, flagged |
 | Medium | 🖐 prepared manual import | API retired 2025-26 |
+
+## Troubleshooting
+
+| Symptom | Cause / fix |
+|---|---|
+| `zsh: command not found: python` | macOS 12.3+ has no `python`. Use `bash bin/autowebpost ...`, or `python3`, or `source .venv/bin/activate`. |
+| `zsh: command not found: #` | Your shell has interactive comments off, so `# notes` in a pasted block run as commands. Paste commands without comments, or `setopt INTERACTIVE_COMMENTS`. |
+| `error: Your local changes ... would be overwritten by checkout` | Commit or stash first: `git stash push -m "wip" <files>`. Never `git checkout --` on work you have not read. |
+| `ModuleNotFoundError: No module named 'yaml'` | Deps not installed: `pip install -r requirements.txt` (or `pip3` outside a venv). |
+| `unknown command: serve` | Your checkout is behind. `serve` was added in the review-dashboard work; `git pull` (or the `mac-setup.sh` path) to get the current version. |
+| Setup script targets the wrong folder | It defaults to `/Volumes/AI/Auto AI WebPost`. Override: `export LOCAL_DIR="/Volumes/AI-1/Auto AI WebPost"`. |
+| `generate` falls back to the offline template | No network or Pollinations unreachable. That fallback is by design; force it with `AUTOWEBPOST_PROVIDER=template`. |
+
+## Changelog
+
+### 2026-09-07 — branch consolidation + doc refresh
+
+Brought this branch up to date with the combined hardening work (fixes, test
+suite, review dashboard, Gemini provider, launcher), then refreshed the docs
+and setup script to match it:
+
+- README test/coverage numbers and the CI matrix now reflect reality
+  (435 tests, 95% coverage, Python 3.9–3.14).
+- `scripts/mac-setup.sh` installs into `.venv` via `.venv/bin/python3` (macOS
+  has no `python`, and even a venv is not guaranteed to provide one), and its
+  "Next" steps use `bash bin/autowebpost` instead of `python -m autowebpost.cli`.
+- The "unknown command: serve" troubleshooting row no longer points users at
+  a specific pull request; it tells them to pull the current version.
+
+### 2026-09-04 — review dashboard
+
+`autowebpost serve`: a local web UI (stdlib `http.server`, no new dependencies)
+that turns the human-review gate into a real workflow. Per draft: article
+preview, SEO fields + JSON-LD, every unresolved `EDIT-ME` marker, and the
+10-point E-E-A-T checklist with machine-verifiable items auto-checked. Approve /
+reject / queue / publish from the same screen.
+
+New `autowebpost/review.py` holds the judgement logic (state, marker detection,
+auto-checks) with no HTTP in it, so it is testable in isolation. Gates are
+enforced server-side: a draft must be approved before it can publish, live
+publishing needs `--allow-live`, and the default bind is `127.0.0.1`.
+
+### 2026-09-04 — hardening pass (+ test suite)
+
+Bugs found by reading and running every code path, each now covered by a
+regression test:
+
+| Bug | Effect |
+|---|---|
+| `seo.jsonld.txt` was a 2-key stub | README promised `BlogPosting`/`FAQPage` JSON-LD per article; nothing was ever generated. Now real structured data, per schema type. |
+| FAQ content destroyed on generate | The engine replaced the body's FAQ section with `<!-- faq-rendered-below -->` and never rendered it back — every published copy shipped an **empty FAQ** and lost the snippet content. |
+| Images written to the wrong folder | Images went to `output/drafts/<slug>/images/` while the article went to `output/drafts/<date>-<slug>/`, so **every image reference was broken**. Images now land beside the article and use relative paths. |
+| Telegraph `children` double-nested | Nodes were emitted as `[[...]]`; Telegraph only accepts a flat list, so live pages would have been rejected. |
+| Local images sent to Telegraph | Only `output/`, `./` and `/` prefixes were filtered — relative `images/hero.jpg` shipped as a broken `<img>`. Any non-`http(s)` source is now dropped. |
+| `--references` silently ignored | Unfilled `EDIT-ME` placeholders counted as "references present", so your real sources were dropped. Placeholders are filtered and your sources are rendered into the body. |
+| `research` failed silently | Both suggestion sources failing printed an empty list and exited 0. Now reports the connectivity problem. |
+| `generate` exited with status 1 | `sys.exit()` was handed a `Path`, so a **successful** run reported failure. Exit codes are now normalised. |
+| One bad platform slug killed the queue | `run_due` raised `KeyError` and aborted the whole run; unknown slugs now fail just that entry. |
+| `--wait 0` still queued | `"0"` is a truthy string, so the documented default queued for immediate publishing instead of not queueing. |
+| Hero image alt text was the bare keyword | Alt text is now the author's `[IMAGE: ...]` description, or a descriptive phrase — not keyword stuffing. |
+| `datetime.utcnow()` | Deprecated in 3.12+ and naive; replaced with a single timezone-aware helper. |
+
+Also: `data/queue.yaml` parsing tolerates an empty/null file, `ImageAsset` ignores
+unknown front-matter keys instead of making a draft unpublishable, and the
+`register --list` hint no longer points at the command you just ran.

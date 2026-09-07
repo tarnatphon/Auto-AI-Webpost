@@ -65,6 +65,17 @@ class FAQItem:
     answer: str
 
 
+def image_from_dict(data: dict) -> "ImageAsset":
+    """Build an ImageAsset, ignoring unknown keys.
+
+    Drafts edited by hand (or written by older versions) may carry extra/renamed
+    front-matter keys; a stray key used to raise TypeError and make the whole
+    draft unpublishable.
+    """
+    known = {"path", "prompt", "alt_text", "credit", "url"}
+    return ImageAsset(**{k: v for k, v in (data or {}).items() if k in known})
+
+
 @dataclass
 class ImageAsset:
     path: str = ""
@@ -128,7 +139,7 @@ class ArticleDraft:
             for i in (fm.get("faq") or [])
         ]
         d.references = fm.get("references") or []
-        d.images = [ImageAsset(**i) for i in (fm.get("images") or [])]
+        d.images = [image_from_dict(i) for i in (fm.get("images") or [])]
         d.canonical_url = fm.get("canonical_url", "")
         d.language = fm.get("language", "en")
         d.created_at = fm.get("created_at", _now_iso())

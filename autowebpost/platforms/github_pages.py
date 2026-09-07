@@ -11,11 +11,10 @@ from __future__ import annotations
 
 import base64
 import re
-from datetime import datetime
 
 import requests
 
-from ..config import get_secret
+from ..config import get_secret, utc_today_iso
 from ..models import ArticleDraft, Persona, PostResult
 from .base import UA, Publisher
 
@@ -27,7 +26,7 @@ class GitHubPagesPublisher(Publisher):
     docs = "https://docs.github.com/en/rest/repos/contents"
 
     def build_payload(self, draft: ArticleDraft, persona: Persona) -> dict:
-        path = f"_posts/{datetime.utcnow().date()}-{draft.slug}.md"
+        path = f"_posts/{utc_today_iso()}-{draft.slug}.md"
         content = draft.to_markdown()
         return {
             "message": f"post: {draft.title}",

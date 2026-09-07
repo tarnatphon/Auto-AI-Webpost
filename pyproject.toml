@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+# Packaging for Auto-AI-WebPost.
+# The CLI keeps working as `python -m autowebpost.cli` from a clone; this exists
+# so it can also be `pip install -e .`'d (and so pytest has one config home).
+
+[project]
+name = "autowebpost"
+version = "0.1.0"
+description = "AI content engine + free multi-platform auto-publisher (official APIs only)"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "requests>=2.31",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+]
+
+[project.scripts]
+autowebpost = "autowebpost.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["autowebpost*"]
+exclude = ["tests*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+filterwarnings = [
+    "error::DeprecationWarning:autowebpost.*",
+]
