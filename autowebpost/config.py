@@ -43,12 +43,11 @@ def load_env(path: Optional[pathlib.Path] = None) -> None:
         return
     for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, val = line.partition("=")
-        key, val = key.strip(), val.strip().strip('"').strip("'")
-        if key and key not in os.environ:
-            os.environ[key] = val
+        if line and not line.startswith("#") and "=" in line:
+            key, _, val = line.partition("=")
+            key, val = key.strip(), val.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = val
 
 
 def get_secret(*names: str, default: str = "") -> str:
