@@ -117,5 +117,15 @@ class TestTelegraphNodes:
         nodes = html_to_telegraph_nodes('<p><a href="https://x.com">go</a></p>')
         assert {"tag": "a", "attrs": {"href": "https://x.com"}, "children": ["go"]} in nodes[0]["children"]
 
+    def test_italic_and_code_inline_tags_become_supported_children(self):
+        nodes = html_to_telegraph_nodes("<p>start <i>italic</i> and <code>x = 1</code> end</p>")
+        assert nodes[0]["children"] == [
+            "start ",
+            {"tag": "em", "children": ["italic"]},
+            " and ",
+            {"tag": "code", "children": ["x = 1"]},
+            " end",
+        ]
+
     def test_empty_input_yields_no_nodes(self):
         assert html_to_telegraph_nodes("") == []

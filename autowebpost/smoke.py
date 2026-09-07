@@ -183,11 +183,7 @@ def run_smoke(draft: Optional[ArticleDraft] = None,
             report.results.append(SmokeResult(plat, ok=False, dry_run=not live,
                                               detail=str(ex).strip("'\"")))
             continue
-        # Live safety: draft-capable platforms are fine; public ones require force.
-        if live and not force and plat not in DRAFT_SAFE:
-            report.results.append(SmokeResult(plat, ok=False, dry_run=False, skipped=True,
-                                              detail="not draft-safe; pass --force to create public content"))
-            continue
+        # Gate already blocked public/undraftable platforms unless --force.
         try:
             result = pub.publish(draft, persona, live=live, allow_public=force)
         except Exception as ex:

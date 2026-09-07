@@ -191,6 +191,51 @@ class TestRunDue:
                                      body_markdown="b").to_markdown(), encoding="utf-8")
         return str(path)
 
+    def test_adapter_exception_is_captured_as_a_failure(self, tmp_path, monkeypatch):
+        """A publisher whose publish() itself raises must never abort the queue."""
+        import autowebpost.platforms as platforms_mod
+
+        class Boom:
+            def publish(self, *a, **k):
+                raise RuntimeError("adapter boom")
+
+        monkeypatch.setattr(platforms_mod, "get", lambda name: Boom())
+        add(draft=self._draft(tmp_path), platforms=["devto"], at="2000-01-01 09:00",
+            max_attempts=1, retry_minutes=30)
+        done = scheduler.run_due(now=datetime(2000, 1, 1, 9, 0))
+        assert done[0]["status"] == "failed"
+        assert done[0]["results"][0]["ok"] is False
+        assert "RuntimeError" in done[0]["results"][0]["detail"]
+
+    def test_entry_at_attempt_limit_is_marked_failed(self, tmp_path):
+        """If attempts already equal max_attempts, don't repost - fail loudly."""
+        add(draft=self._draft(tmp_path), platforms=["telegraph"], at="2000-01-01 09:00",
+            max_attempts=1, retry_minutes=30)
+        q = scheduler.entries()
+        q[0]["attempts"] = 1
+        q[0]["status"] = "pending"
+        scheduler.save_yaml(scheduler.QUEUE_FILE, q)
+
+        done = scheduler.run_due(now=datetime(2000, 1, 1, 9, 0))
+        assert done[0]["status"] == "failed"
+        assert "exhausted 1 attempt(s)" in done[0]["results"][-1]["detail"]
+
+    def test_older_queue_result_state_backfills_and_skips_success(self, tmp_path):
+        """Old entries without platform_status must infer it from prior results."""
+        add(draft=self._draft(tmp_path), platforms=["devto"], at="2000-01-01 09:00",
+            max_attempts=2, retry_minutes=30)
+        q = scheduler.entries()
+        q[0]["status"] = "retrying"
+        q[0]["results"] = [{"platform": "devto", "ok": True, "url": "u", "detail": "ok"}]
+        q[0].pop("platform_status", None)
+        scheduler.save_yaml(scheduler.QUEUE_FILE, q)
+
+        done = scheduler.run_due(now=datetime(2000, 1, 1, 9, 0))
+        assert done[0]["status"] == "simulated"
+        assert done[0]["platform_status"]["devto"] == "ok"
+        # No second HTTP call recorded - the platform already succeeded once.
+        assert len([r for r in done[0]["results"] if r.get("platform") == "devto"]) == 1
+
     def test_live_run_marks_published_when_every_platform_succeeds(self, tmp_path,
                                                                    monkeypatch):
         """Telegraph needs no credentials, so its live path would really post to

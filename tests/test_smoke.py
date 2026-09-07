@@ -89,6 +89,31 @@ class TestGates:
         assert "--force" in report.gate_message
         assert "mastodon" in report.gate_message
 
+    def test_unknown_platform_is_reported_without_stopping_the_run(self, monkeypatch):
+        report = smoke.run_smoke(platforms=["troll"], live=False, save_report=False)
+        assert report.allowed is True
+        assert report.ok is False
+        result = report.results[0]
+        assert result.platform == "troll"
+        assert result.ok is False
+        assert "Unknown publisher" in result.detail
+
+    def test_publisher_exception_is_captured(self, monkeypatch, persona):
+        class Boom:
+            def publish(self, *a, **k):
+                raise RuntimeError("adapter boom")
+
+        monkeypatch.setattr(smoke, "get", lambda name: Boom())
+        report = smoke.run_smoke(platforms=["devto"], live=False, save_report=False)
+        assert report.ok is False
+        assert report.results[0].ok is False
+        assert "RuntimeError" in report.results[0].detail
+
+    def test_report_is_failed_when_blocked_or_empty(self, monkeypatch):
+        assert SmokeReport(allowed=False).ok is False
+        assert SmokeReport(allowed=True).ok is False
+        assert SmokeReport(allowed=True, results=[smoke.SmokeResult("x", ok=True, dry_run=True)]).ok
+
 
 class TestLiveGated:
     def test_live_draft_safe_platform_is_allowed_and_attempted(self, monkeypatch):

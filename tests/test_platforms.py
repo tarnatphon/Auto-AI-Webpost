@@ -120,6 +120,31 @@ class TestLiveGuard:
         result = get("devto").publish(draft, persona, live=True)
         assert result.ok is False and "kaboom" in result.detail
 
+    def test_http_error_with_unreadable_body_still_reports_status(self, draft, persona,
+                                                                  monkeypatch):
+        """If the HTTP error body can't be read, fail with the status, not a traceback."""
+        import requests
+        monkeypatch.setenv("DEVTO_API_KEY", "k")
+
+        class Resp:
+            status_code = 418
+
+            @property
+            def text(self):
+                raise RuntimeError("stream closed")
+
+            def raise_for_status(self):
+                raise requests.HTTPError("teapot", response=self)
+
+            def json(self):
+                return {}
+
+        monkeypatch.setattr(requests, "post", lambda *a, **k: Resp())
+        result = get("devto").publish(draft, persona, live=True)
+        assert result.ok is False
+        assert "418" in result.detail
+        assert "stream closed" not in result.detail
+
 
 class TestPayloadContent:
     def test_devto_limits_tags_and_creates_a_draft(self, draft, persona):
@@ -166,6 +191,25 @@ class TestPayloadContent:
         assert "Pro" in get("hashnode").docs or True  # documented in module docstring
         payload = get("hashnode").build_payload(draft, persona)
         assert payload["variables"]["input"]["title"] == draft.title
+
+
+class TestMastodonSplit:
+    def test_short_text_stays_single_paragraph(self):
+        from autowebpost.platforms.mastodon import _split
+        assert _split("short", limit=480) == ["short"]
+
+    def test_long_paragraphs_are_chunked(self):
+        from autowebpost.platforms.mastodon import _split
+        parts = _split("word " * 200, limit=480)
+        assert len(parts) >= 2
+        assert all(len(p) <= 480 for p in parts)
+
+    def test_multiple_short_paragraphs_are_accumulated(self):
+        from autowebpost.platforms.mastodon import _split
+        text = "a" * 400 + "\n\n" + "b" * 300
+        parts = _split(text, limit=480)
+        # First 400 + second 300 exceeds the limit, so the second goes alone.
+        assert len(parts) == 2
 
 
 class TestAbstractBase:

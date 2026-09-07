@@ -135,10 +135,10 @@ The workflow template lives at `.github/workflow-templates/autopost.yml` — `sc
 ```
 autowebpost/          the engine (content, images, platforms, profiles, research,
                       scheduler, review, serve)
-tests/                462 offline tests (pytest) - 94% coverage of autowebpost/
+tests/                522 offline tests (pytest) - 100% coverage of autowebpost/
 data/                 catalog (sites.yaml) + persona/config templates + .env.example
 docs/                 research report · SEO/E-E-A-T playbook · compliance rules
-scripts/              mac-setup.sh · sync_local.sh
+scripts/              mac-setup.sh · sync_local.sh · check.sh
 output/drafts/        generated drafts + images + checklists (gitignored; example committed)
 .github/workflows/    tests.yml (CI for this repo) · autopost.yml (free cloud scheduler)
 ```
@@ -198,8 +198,10 @@ The command never uses your real draft unless you pass `--draft` explicitly.
 
 ```bash
 pip install -r requirements-dev.txt
-pytest                                   # 462 tests, fully offline, ~5s
-pytest --cov=autowebpost --cov-report=term-missing
+bash scripts/check.sh                      # compileall + pip check + YAML + tests + 100% coverage
+bash scripts/check.sh --fast               # same static checks, skip the test run
+pytest                                   # 522 tests, fully offline, ~5s
+pytest --cov=autowebpost --cov-report=term-missing --cov-fail-under=100
 ```
 
 The suite never touches the network or a real account. An autouse fixture in
@@ -247,6 +249,27 @@ pip install -e .          # then: autowebpost sites
 
 ## Changelog
 
+### 2026-09-07 — test/packaging hardening
+
+Brought the suite to full coverage and made CI enforce it:
+
+- **522 tests / 100% coverage** of `autowebpost/` (fresh coverage run, not an
+  accumulating `.coverage` file). Every remaining branch was covered: the CLI
+  `python -m autowebpost.cli` entrypoint, HTTP-error bodies that cannot be read,
+  cached Reddit OAuth tokens, empty E-E-A-T edge cases, and the missing-config /
+  missing-draft-folder paths.
+- **CI gates coverage at 100%** (`--cov-fail-under=100`) so a new untested path
+  fails the suite instead of silently shipping.
+- **CI installs the package editable** and verifies the `autowebpost` console
+  entry point, plus `compileall` and `pip check` as static sanity steps.
+- **`scripts/check.sh`**: one-command local health check (compileall, pip check,
+  YAML parsing, shell syntax, tests + 100% coverage).
+- Resource/file leaks now fail the suite; the entrypoint test closes its source
+  file instead of leaking it.
+- `generate` now reports images as `disabled (--no-images)`, `N generated`, or
+  `none - generation did not produce images` instead of the old misleading
+  "use --no-images? they may have failed" hint.
+
 ### 2026-09-07 — live smoke, Reddit adapter, scheduler retry
 
 - **`smoke` command** (`autowebpost smoke`): live-but-controlled connectivity
@@ -270,7 +293,8 @@ suite, review dashboard, Gemini provider, launcher), then refreshed the docs
 and setup script to match it:
 
 - README test/coverage numbers and the CI matrix now reflect reality
-  (435 tests, 95% coverage, Python 3.9–3.14).
+  (435 tests / 95% coverage at that review time; the current suite is
+  522 tests / 100% coverage — see the top of this page).
 - `scripts/mac-setup.sh` installs into `.venv` via `.venv/bin/python3` (macOS
   has no `python`, and even a venv is not guaranteed to provide one), and its
   "Next" steps use `bash bin/autowebpost` instead of `python -m autowebpost.cli`.

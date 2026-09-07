@@ -159,7 +159,12 @@ def cmd_generate(args):
     print(f"  slug  : {draft.slug}")
     print(f"  meta  : {draft.meta_description}")
     print(f"  tags  : {', '.join(draft.tags)}")
-    print(f"  images: {len(draft.images)} generated" if draft.images else "  images: none (use --no-images? they may have failed)")
+    if draft.images:
+        print(f"  images: {len(draft.images)} generated")
+    elif args.no_images:
+        print("  images: disabled (--no-images)")
+    else:
+        print("  images: none - generation did not produce images (check the image provider config; pass --no-images to skip them)")
     print(f"  faq   : {len(draft.faq)} questions | words: {len(draft.body_markdown.split())}")
     schema = "BlogPosting + FAQPage" if draft.faq else "BlogPosting"
     print(f"  refs  : {len(draft.references)} | schema: {schema} -> seo.jsonld.txt")
@@ -208,7 +213,8 @@ def cmd_queue(args):
         if not entries:
             print("Queue is empty.")
     elif args.cmd == "remove":
-        print("Removed." if queue_remove(args.id) else "Not found.")
+        target = args.id or args.draft
+        print("Removed." if target and queue_remove(target) else "Not found.")
     elif args.cmd == "run":
         done = run_due(live=args.live)
         if not done:

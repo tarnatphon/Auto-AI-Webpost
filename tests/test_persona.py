@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 
 import autowebpost.profiles.persona as persona_mod
-from autowebpost.profiles.persona import bootstrap, load_persona
+from autowebpost.profiles.persona import bootstrap, load_persona, persona_path
 
 
 @pytest.fixture
@@ -27,6 +27,9 @@ class TestLoadPersona:
 
     def test_falls_back_to_the_example(self, persona_file):
         assert load_persona().name  # example persona
+
+    def test_persona_path_is_the_configured_file(self, persona_file):
+        assert persona_path() == str(persona_file)
 
 
 class TestBootstrap:

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 
 import pytest
 
@@ -135,6 +136,20 @@ class TestGenerate:
         run("generate", "--topic", "Test Topic Here", "--no-images")
         out = capsys.readouterr().out
         assert "publish" in out and "--live" in out
+        assert "disabled (--no-images)" in out
+
+    def test_reports_the_generated_image_count(self, capsys, monkeypatch, tmp_path):
+        import autowebpost.cli as cli_mod
+        from autowebpost.models import ImageAsset
+
+        def fake_attach(self, draft, folder):
+            draft.images = [ImageAsset(path="images/hero.jpg", prompt="a hero",
+                                       alt_text="Hero image")]
+            return draft
+
+        monkeypatch.setattr(cli_mod.ContentEngine, "attach_images", fake_attach)
+        run("generate", "--topic", "Test Topic Here")
+        assert "1 generated" in capsys.readouterr().out
 
 
 class TestPublish:
@@ -180,6 +195,21 @@ class TestQueue:
         entry_id = sched.entries()[0]["id"]
         run("queue", "remove", "--id", entry_id)
         assert "Removed" in capsys.readouterr().out
+
+    def test_remove_accepts_positional_id(self, capsys, monkeypatch, tmp_path):
+        import autowebpost.scheduler as sched
+        monkeypatch.setattr(sched, "QUEUE_FILE", tmp_path / "queue.yaml")
+        from autowebpost.models import ArticleDraft, Persona
+        from autowebpost.drafts import save_draft
+        folder = save_draft(ArticleDraft(title="T", slug="t", body_markdown="b"),
+                            Persona(), folder=tmp_path / "d")
+
+        run("queue", "add", str(folder / "article.md"),
+            "--platforms", "telegraph", "--at", "2030-01-01 09:00")
+        entry_id = sched.entries()[0]["id"]
+        run("queue", "remove", entry_id)
+        assert "Removed" in capsys.readouterr().out
+        assert sched.entries() == []
 
     def test_list_on_an_empty_queue(self, capsys, monkeypatch, tmp_path):
         import autowebpost.scheduler as sched
@@ -230,6 +260,7 @@ class TestRun:
         run("run", "--topic", "Test Topic Here", "--to", "telegraph", "--wait", "60")
         out = capsys.readouterr().out
         assert "Queued for" in out
+        assert "images: none - generation did not produce images" in out
         assert len(sched.entries()) == 1
 
     def test_no_wait_means_no_queue_entry(self, monkeypatch, tmp_path):
@@ -250,3 +281,147 @@ class TestEntryPoint:
             run("--version")
         assert e.value.code == 0
         assert __version__ in capsys.readouterr().out
+
+
+class TestResearchEmpty:
+    def test_research_without_expand_reports_offline_hint(self, capsys, monkeypatch):
+        import autowebpost.cli as cli_mod
+        monkeypatch.setattr(cli_mod, "suggest", lambda k: [])
+        assert run("research", "ai content") == 0
+        out = capsys.readouterr().out
+        assert "no suggestions returned" in out
+
+
+class TestPersonaInit:
+    def test_init_interactively_writes_a_persona(self, capsys, monkeypatch):
+        import autowebpost.cli as cli_mod
+        fake_persona = cli_mod.load_persona()
+        monkeypatch.setattr(cli_mod, "bootstrap_persona",
+                            lambda answers: fake_persona)
+        answers = ["New Persona", "newhandle", "n@example.com", "https://site",
+                   "tagline", "ai, seo", "cred", "7", "https://gh", "https://x"]
+        monkeypatch.setattr("builtins.input", lambda prompt="": answers.pop(0))
+        assert run("persona", "--init") == 0
+        assert "Persona saved" in capsys.readouterr().out
+
+
+class TestConnect:
+    def test_connect_tumblr_invokes_the_flow(self, monkeypatch, capsys):
+        import autowebpost.platforms.tumblr as tumblr_mod
+        called = []
+        monkeypatch.setattr(tumblr_mod, "run_connect_flow",
+                            lambda: called.append(True) or "token")
+        assert run("connect", "tumblr") == 0
+        assert called == [True]
+
+
+class TestPublishLiveCount:
+    def test_live_success_is_counted_and_reported(self, capsys, tmp_path, monkeypatch,
+                                                  draft, persona):
+        import autowebpost.cli as cli_mod
+        from autowebpost.drafts import save_draft
+        from autowebpost.models import PostResult
+
+        folder = save_draft(draft, persona, folder=tmp_path / "d")
+        class FakePub:
+            slug = "devto"
+            name = "DEV.to"
+
+            def publish(self, draft, persona, **kw):
+                return PostResult("devto", True, url="https://dev.to/x",
+                                  detail="ok", dry_run=False)
+
+        monkeypatch.setattr(cli_mod, "get_many", lambda names: [FakePub()])
+        assert run("publish", str(folder / "article.md"),
+                   "--to", "devto", "--live") == 0
+        out = capsys.readouterr().out
+        assert "LIVE" in out
+        assert "1/1 posted live" in out
+
+
+class TestQueueRunOutput:
+    def test_run_prints_results_with_notes(self, capsys, monkeypatch):
+        import autowebpost.cli as cli_mod
+        fake_done = [{
+            "status": "published",
+            "draft": "output/drafts/x/article.md",
+            "attempts": 1,
+            "max_attempts": 3,
+            "next_attempt_at": "",
+            "results": [{"platform": "telegraph", "ok": True, "url": "",
+                         "detail": "page is live", "note": None}],
+        }]
+        monkeypatch.setattr(cli_mod, "run_due", lambda live=False: fake_done)
+        assert run("queue", "run", "--live") == 0
+        out = capsys.readouterr().out
+        assert "[published]" in out
+        assert "attempt 1/3" in out
+        assert "page is live" in out
+
+
+class TestSmokeCli:
+    def test_gate_blocks_with_exit_1(self, monkeypatch, capsys):
+        import autowebpost.cli as cli_mod
+        from autowebpost.smoke import SmokeReport
+
+        def fake_run_smoke(**kw):
+            return SmokeReport(live=True, platforms=["devto"],
+                               allowed=False,
+                               gate_message="live smoke requires X")
+
+        monkeypatch.setattr(cli_mod, "run_smoke", fake_run_smoke)
+        assert run("smoke", "--live", "--confirm", "I am testing live") == 1
+        out = capsys.readouterr().out
+        assert "Gate blocked" in out and "live smoke requires X" in out
+
+    def test_live_success_prints_the_warning(self, monkeypatch, capsys):
+        import autowebpost.cli as cli_mod
+        from autowebpost.smoke import SmokeReport, SmokeResult
+
+        def fake_run_smoke(**kw):
+            return SmokeReport(
+                live=True, platforms=["devto"],
+                allowed=True,
+                results=[SmokeResult("devto", ok=True, dry_run=False,
+                                     url="https://dev.to/x", detail="created")])
+
+        monkeypatch.setattr(cli_mod, "run_smoke", fake_run_smoke)
+        assert run("smoke", "--live", "--confirm", "I am testing live") == 0
+        out = capsys.readouterr().out
+        assert "SMOKE LIVE" in out
+        assert "inspect and delete" in out
+
+
+class TestResearchExpandOffline:
+    def test_expand_with_empty_suggestions_hints_offline(self, monkeypatch, capsys):
+        import autowebpost.cli as cli_mod
+        import autowebpost.research.keywords as kw
+        monkeypatch.setattr(kw, "expand", lambda k: {"alphabet": [], "questions": []})
+        assert run("research", "ai", "--expand") == 0
+        out = capsys.readouterr().out
+        assert "no suggestions returned" in out
+        assert "DuckDuckGo" in out
+
+
+class TestConnectUnknownService:
+    def test_unrecognized_service_lists_available(self):
+        from types import SimpleNamespace
+        import autowebpost.cli as cli_mod
+        cli_mod.cmd_connect(SimpleNamespace(service="ghost"))
+
+
+class TestMainModuleEntry:
+    def test_main_entrypoint_runs_when_used_as_a_module(self, capsys, monkeypatch):
+        import autowebpost.cli as cli_mod
+        monkeypatch.setattr(sys, "argv", ["autowebpost"])
+        with open(cli_mod.__file__, encoding="utf-8") as fh:
+            source = fh.read()
+        ns = {
+            "__name__": "__main__",
+            "__file__": cli_mod.__file__,
+            "__package__": "autowebpost",
+        }
+        with pytest.raises(SystemExit) as e:
+            exec(compile(source, cli_mod.__file__, "exec"), ns)
+        assert e.value.code == 0
+        assert "usage" in capsys.readouterr().out.lower()

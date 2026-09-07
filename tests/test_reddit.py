@@ -126,3 +126,26 @@ class TestLive:
         result = get("reddit").publish(draft, persona, live=True, allow_public=True)
         assert result.ok is False
         assert "REDDIT_CLIENT_ID" in result.detail
+
+    def test_cached_token_skips_the_auth_roundtrip(self, draft, persona, monkeypatch):
+        _env(monkeypatch)
+        get("reddit")._token = "cached-token"
+        responses = make_post_stub(monkeypatch, submit=True)
+        result = get("reddit").publish(draft, persona, live=True, allow_public=True)
+        assert result.ok is True
+        assert len(responses) == 1
+        assert responses[0].calls[0][0] == SUBMIT_URL
+        assert responses[0].calls[0][1]["headers"]["Authorization"] == "bearer cached-token"
+
+    def test_auth_style_http_error_is_reported_by_base(self, draft, persona, monkeypatch):
+        _env(monkeypatch)
+        get("reddit")._token = "cached-token"
+
+        def fake_post(url, *a, **k):
+            assert str(url) == SUBMIT_URL
+            return FakeResponse({}, status_code=401)
+
+        monkeypatch.setattr("requests.post", fake_post)
+        result = get("reddit").publish(draft, persona, live=True, allow_public=True)
+        assert result.ok is False
+        assert "HTTP 401" in result.detail
