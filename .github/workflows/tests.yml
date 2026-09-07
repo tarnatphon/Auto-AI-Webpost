@@ -40,10 +40,21 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
 
+      - name: Install package and check the console entry point
+        run: |
+          pip install -e .
+          autowebpost --version
+
+      - name: Static sanity
+        run: bash scripts/check.sh --fast
+
       - name: Run tests
+        # Coverage is intentionally gated at 100%: this suite must describe every
+        # runtime path (including the safety gates and adapters) so a regression
+        # in an untested edge case fails CI instead of reaching a real account.
         run: |
           set -o pipefail
-          pytest tests/ --cov=autowebpost --cov-report=term-missing --tb=short 2>&1 | tee pytest.log
+          pytest tests/ --cov=autowebpost --cov-report=term-missing --cov-fail-under=100 --tb=short 2>&1 | tee pytest.log
 
       - name: Upload test log
         if: failure()
