@@ -8,6 +8,7 @@ Providers (pick per-run, configured in data/config.yaml -> content.provider):
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass, field
 from typing import List, Optional
@@ -20,6 +21,9 @@ from .eeat import author_box, disclosure_block, references_section, trust_block
 from .seo import build_meta_description, clean_tag, extract_keywords, slugify
 
 UA = {"User-Agent": "AutoAIWebPost/0.1 (https://github.com/)"}
+
+# Unfilled template markers: instructions to the author, never published content.
+_PLACEHOLDER = re.compile(r"<!--\s*EDIT-ME.*?-->", re.I | re.S)
 
 
 @dataclass
@@ -97,6 +101,63 @@ class PollinationsProvider(LLMProvider):
             return r.text
 
 
+class GeminiNativeProvider(LLMProvider):
+    """Google Gemini through the native generativelanguage API (has a free tier).
+
+    Separate from the OpenAI-compatible provider because Gemini's own endpoint
+    takes a different request shape (system_instruction + contents/parts) and
+    its own auth header.
+
+        GEMINI_API_KEY=...      (aistudio.google.com/apikey)
+    """
+    name = "gemini"
+    BASE = "https://generativelanguage.googleapis.com/v1beta/models"
+
+    def __init__(self, api_key: str, model: str = "gemini-2.5-flash", timeout: int = 240):
+        self.api_key = api_key
+        self.model = model
+        self.timeout = timeout
+
+    def complete(self, system: str, user: str) -> str:
+        body = {
+            "system_instruction": {"parts": [{"text": system}]},
+            "contents": [{"role": "user", "parts": [{"text": user}]}],
+            "generationConfig": {"temperature": 0.7},
+        }
+        url = f"{self.BASE}/{self.model}:generateContent"
+        last = "no attempt made"
+
+        # The key is accepted either as a header or as a query parameter; which
+        # one works depends on the endpoint version, so try both.
+        for transport in ("header", "query"):
+            try:
+                if transport == "header":
+                    r = requests.post(url, headers={"x-goog-api-key": self.api_key, **UA},
+                                      json=body, timeout=self.timeout)
+                else:
+                    r = requests.post(url + "?key=" + self.api_key, headers=UA,
+                                      json=body, timeout=self.timeout)
+            except Exception as e:
+                last = f"{type(e).__name__}: {e}"
+                continue
+
+            if not r.ok:
+                last = f"HTTP {r.status_code}: {r.text[:200]}"
+                continue
+
+            candidates = r.json().get("candidates") or []
+            if not candidates:
+                last = "empty candidates"
+                continue
+            text = "".join(p.get("text", "")
+                           for p in (candidates[0].get("content") or {}).get("parts", []))
+            if text:
+                return text
+            last = "empty candidates"
+
+        raise RuntimeError(f"Gemini native ({self.model}) failed: {last}")
+
+
 class TemplateProvider(LLMProvider):
     """Deterministic scaffold - the structure is done, you add the specifics.
     Guaranteed to work offline; also the best prompt for a human writer."""
@@ -107,7 +168,9 @@ class TemplateProvider(LLMProvider):
         m = re.search(r"TOPIC: (.+)", user)
         topic = m.group(1).strip() if m else "Your Topic"
         mk = re.search(r"PRIMARY KEYWORD: (.+)", user)
-        kw = m and mk and mk.group(1).strip() or topic
+        # Explicit fallback chain - the old `a and b and c or d` chained truthiness
+        # returned `topic` whenever the keyword parsed to a falsy value.
+        kw = (mk.group(1).strip() if mk else "") or topic
         wc = 0
         from .seo import smart_title
         return f"""<<<TITLE>>>
@@ -177,8 +240,12 @@ Few decisions move the needle on **{kw.lower()}** as much as having a repeatable
 
 
 def make_provider(cfg: dict) -> LLMProvider:
-    """cfg = config['content'] sub-dict."""
-    kind = (cfg.get("provider") or "template").lower()
+    """cfg = config['content'] sub-dict.
+
+    AUTOWEBPOST_PROVIDER (env) overrides the config file - handy for forcing the
+    offline template provider in CI, or a one-off run with a different model.
+    """
+    kind = (os.environ.get("AUTOWEBPOST_PROVIDER") or cfg.get("provider") or "template").lower()
     if kind == "pollinations":
         return PollinationsProvider(model=cfg.get("pollinations_model", "openai"))
     if kind == "openai":
@@ -188,6 +255,13 @@ def make_provider(cfg: dict) -> LLMProvider:
         if not key:
             raise RuntimeError("provider=openai requires OPENAI_API_KEY (or LLM_API_KEY) in .env")
         return OpenAICompatProvider(base, key, cfg.get("openai_model", "gpt-4o-mini"))
+    if kind == "gemini":
+        from ..config import get_secret
+        key = get_secret("GEMINI_API_KEY", "OPENAI_API_KEY", "LLM_API_KEY")
+        if not key:
+            raise RuntimeError("provider=gemini requires GEMINI_API_KEY "
+                               "(or OPENAI_API_KEY / LLM_API_KEY) in .env")
+        return GeminiNativeProvider(key, cfg.get("gemini_model", "gemini-2.5-flash"))
     return TemplateProvider()
 
 
@@ -205,8 +279,25 @@ def _parse_sections(raw: str) -> dict:
     return parts
 
 
+def _render_faq(faq: List[FAQItem]) -> str:
+    """Render structured FAQ items back into markdown.
+
+    The FAQ is extracted into structured data for JSON-LD, but the questions
+    and answers must ALSO stay visible in the body - an empty FAQ section on
+    the published page both loses the featured-snippet opportunity and makes
+    the FAQPage schema ineligible (it must mirror visible content).
+    """
+    if not faq:
+        return "## FAQ\n"
+    lines = ["## FAQ", ""]
+    for item in faq:
+        lines += [f"### {item.question}", "", item.answer, ""]
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def _extract_faq(body: str) -> (str, List[FAQItem]):
-    """Pull the FAQ H3 block out of the body into structured items."""
+    """Pull the FAQ H3 block out of the body into structured items, and put the
+    rendered Q&A back in its place."""
     faq: List[FAQItem] = []
     m = re.search(r"^## FAQ\s*$(.*?)(?=^## \w|\Z)", body, re.M | re.S)
     if not m:
@@ -215,15 +306,35 @@ def _extract_faq(body: str) -> (str, List[FAQItem]):
     qas = re.findall(r"^###\s+(.+?)\s*\n+(.*?)(?=^###\s|\Z)", block, re.M | re.S)
     for q, a in qas:
         faq.append(FAQItem(question=q.strip(), answer=re.sub(r"\s+", " ", a).strip()))
-    body = body.replace(m.group(0), "## FAQ\n\n<!-- faq-rendered-below -->\n")
+    body = body.replace(m.group(0), _render_faq(faq))
     return body, faq
 
 
+_REFERENCES_SECTION = re.compile(r"^## References\s*$(.*?)(?=^## \w|\Z)", re.M | re.S)
+
+
+def _replace_references_section(body: str, refs: List[str]) -> str:
+    """Make the body's References section list exactly ``refs``.
+
+    Replaces it in place when present, otherwise appends one at the end.
+    """
+    section = references_section(refs).strip()
+    if _REFERENCES_SECTION.search(body):
+        return _REFERENCES_SECTION.sub(lambda m: section + "\n\n", body, count=1)
+    return body.rstrip() + "\n\n" + section + "\n"
+
+
 def _extract_references(body: str) -> (str, List[str]):
+    """Collect the numbered reference list, ignoring unfilled EDIT-ME markers.
+
+    Placeholders are instructions to the human author, not sources; keeping them
+    out means a real ``--references`` list is no longer silently discarded.
+    """
     m = re.search(r"^## References\s*$(.*?)(?=^## \w|\Z)", body, re.M | re.S)
     if not m:
         return body, []
     refs = [re.sub(r"^\d+\.\s*", "", l).strip() for l in m.group(1).splitlines() if l.strip()]
+    refs = [r for r in refs if r and not _PLACEHOLDER.search(r)]
     return body, refs
 
 
@@ -245,7 +356,23 @@ class ContentEngine:
             self.provider = TemplateProvider()
             return self.provider.complete(system, user)
 
-    def generate(self, brief: Brief, generate_images: bool = True) -> ArticleDraft:
+    def attach_images(self, draft: ArticleDraft, draft_dir=None) -> ArticleDraft:
+        """Generate + inline images for a draft, writing them into draft_dir/images.
+
+        Separated from generate() because the image folder has to be the same
+        folder the article is saved to, and that folder name is derived from the
+        slug, which only exists once the draft is generated.
+        """
+        try:
+            from ..images.provider import images_for_draft
+            draft.images = images_for_draft(draft, draft_dir=draft_dir)
+            if draft.images:
+                draft.body_markdown = _insert_images(draft)
+        except Exception:  # images are best-effort; a text draft is still useful
+            draft.images = []
+        return draft
+
+    def generate(self, brief: Brief, generate_images: bool = True, draft_dir=None) -> ArticleDraft:
         brief.author_name = brief.author_name or self.persona.name
         brief.author_tagline = brief.author_tagline or self.persona.tagline
         brief.author_experience_years = brief.author_experience_years or self.persona.experience_years
@@ -264,7 +391,13 @@ class ContentEngine:
         body = parts["BODY"]
         body, faq = _extract_faq(body)
         body, refs = _extract_references(body)
-        refs = refs or brief.references
+        refs = refs or [r for r in brief.references if r and r.strip()]
+        # Real references must reach the page. If the body already has a
+        # References section filled with EDIT-ME placeholders (the template
+        # always does), swap the placeholders for the supplied sources instead
+        # of leaving `--references` with no visible effect.
+        if refs:
+            body = _replace_references_section(body, refs)
 
         keywords_line = parts.get("KEYWORDS", "")
         if "|" in keywords_line:
@@ -299,12 +432,7 @@ class ContentEngine:
         )
 
         if generate_images:
-            try:
-                from ..images.provider import images_for_draft
-                draft.images = images_for_draft(draft)
-                draft.body_markdown = _insert_images(draft)
-            except Exception as e:  # images are best-effort
-                draft.images = []
+            self.attach_images(draft, draft_dir)
         return draft
 
 

@@ -18,3 +18,10 @@ __pycache__/
 .venv/
 venv/
 .DS_Store
+
+# testing / packaging
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.egg-info/

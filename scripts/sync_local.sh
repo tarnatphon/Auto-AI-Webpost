@@ -10,7 +10,7 @@
 # ============================================================
 set -euo pipefail
 
-LOCAL_DIR="/Volumes/AI/Auto AI WebPost"
+LOCAL_DIR="${LOCAL_DIR:-/Volumes/AI/Auto AI WebPost}"
 cd "$LOCAL_DIR"
 
 echo "==> [$(date '+%Y-%m-%d %H:%M:%S')] sync start"
