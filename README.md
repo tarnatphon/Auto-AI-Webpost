@@ -131,7 +131,7 @@ The workflow template lives at `.github/workflow-templates/autopost.yml` — `sc
 ```
 autowebpost/          the engine (content, images, platforms, profiles, research,
                       scheduler, review, serve)
-tests/                414 offline tests (pytest) - 94% coverage of autowebpost/
+tests/                435 offline tests (pytest) - 95% coverage of autowebpost/
 data/                 catalog (sites.yaml) + persona/config templates + .env.example
 docs/                 research report · SEO/E-E-A-T playbook · compliance rules
 scripts/              mac-setup.sh · sync_local.sh
@@ -170,7 +170,7 @@ draft.
 
 ```bash
 pip install -r requirements-dev.txt
-pytest                                   # 414 tests, fully offline, ~5s
+pytest                                   # 435 tests, fully offline, ~5s
 pytest --cov=autowebpost --cov-report=term-missing
 ```
 
@@ -181,7 +181,7 @@ publish: Telegra.ph needs no API key at all, so on a networked machine a stray
 folders are redirected to `tmp_path`, and the live `_publish_live` path is
 exercised with canned responses so adapter bugs surface before they reach your
 accounts. CI (`.github/workflows/tests.yml`) runs the suite plus a CLI smoke
-test on Python 3.9–3.13.
+test on Python 3.9–3.14.
 
 Install it as a package instead of running from a clone:
 
@@ -212,11 +212,25 @@ pip install -e .          # then: autowebpost sites
 | `zsh: command not found: #` | Your shell has interactive comments off, so `# notes` in a pasted block run as commands. Paste commands without comments, or `setopt INTERACTIVE_COMMENTS`. |
 | `error: Your local changes ... would be overwritten by checkout` | Commit or stash first: `git stash push -m "wip" <files>`. Never `git checkout --` on work you have not read. |
 | `ModuleNotFoundError: No module named 'yaml'` | Deps not installed: `pip install -r requirements.txt` (or `pip3` outside a venv). |
-| `unknown command: serve` | Your folder is behind. `serve` is in PR #2 — merge it, or `git fetch origin && git checkout arena/01a06ae5-auto-ai-webpost`. |
+| `unknown command: serve` | Your checkout is behind. `serve` was added in the review-dashboard work; `git pull` (or the `mac-setup.sh` path) to get the current version. |
 | Setup script targets the wrong folder | It defaults to `/Volumes/AI/Auto AI WebPost`. Override: `export LOCAL_DIR="/Volumes/AI-1/Auto AI WebPost"`. |
 | `generate` falls back to the offline template | No network or Pollinations unreachable. That fallback is by design; force it with `AUTOWEBPOST_PROVIDER=template`. |
 
 ## Changelog
+
+### 2026-09-07 — branch consolidation + doc refresh
+
+Brought this branch up to date with the combined hardening work (fixes, test
+suite, review dashboard, Gemini provider, launcher), then refreshed the docs
+and setup script to match it:
+
+- README test/coverage numbers and the CI matrix now reflect reality
+  (435 tests, 95% coverage, Python 3.9–3.14).
+- `scripts/mac-setup.sh` installs into `.venv` via `.venv/bin/python3` (macOS
+  has no `python`, and even a venv is not guaranteed to provide one), and its
+  "Next" steps use `bash bin/autowebpost` instead of `python -m autowebpost.cli`.
+- The "unknown command: serve" troubleshooting row no longer points users at
+  a specific pull request; it tells them to pull the current version.
 
 ### 2026-09-04 — review dashboard
 

@@ -40,10 +40,11 @@ if [ ! -d ".venv" ]; then
     echo "==> Creating .venv..."
     python3 -m venv .venv
 fi
-# shellcheck disable=SC1091
-source .venv/bin/activate
-pip install --upgrade pip -q
-pip install -r requirements.txt -q
+# Use the venv interpreter directly (macOS 12.3+ has no `python`, and even a
+# venv is not guaranteed to provide one - but it always provides python3).
+echo "==> Installing dependencies into .venv..."
+.venv/bin/python3 -m pip install --upgrade pip -q
+.venv/bin/python3 -m pip install -r requirements.txt -q
 
 # --- 3. starter files ---------------------------------------
 [ -f .env ] || cp .env.example .env
@@ -60,9 +61,10 @@ fi
 
 echo ""
 echo "Setup complete. Next:"
-echo "  cd \"/Volumes/AI/Auto AI WebPost\" && source .venv/bin/activate"
-echo "  1. edit data/persona.yaml        (your identity — powers E-E-A-T)"
-echo "  2. edit .env                     (API keys, only for platforms you use)"
-echo "  3. python -m autowebpost.cli sites          (see the catalog)"
-echo "  4. python -m autowebpost.cli register githubpages devto telegraph --open"
-echo "  5. python -m autowebpost.cli run --topic 'Your first topic' --wait 60"
+echo "  cd \"$LOCAL_DIR\" && source .venv/bin/activate"
+echo "  1. edit data/persona.yaml            (your identity — powers E-E-A-T)"
+echo "  2. edit .env                         (API keys, only for platforms you use)"
+echo "  3. bash bin/autowebpost sites                       (see the catalog)"
+echo "  4. bash bin/autowebpost register githubpages devto telegraph --open"
+echo "  5. bash bin/autowebpost generate --topic 'Your first topic' --no-images"
+echo "  6. bash bin/autowebpost serve                        (review, approve, then queue/publish)"
