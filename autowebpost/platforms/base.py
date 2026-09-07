@@ -6,6 +6,7 @@ Safety model: every publish call is a DRY RUN unless live=True.
 from __future__ import annotations
 
 import json
+import os
 from abc import ABC, abstractmethod
 from typing import Dict, List
 
@@ -22,6 +23,10 @@ class Publisher(ABC):
     name: str = "Base"
     env_keys: List[str] = []
     docs: str = ""
+    # True for platforms with no draft mode (a live post is public immediately).
+    # Refuses live unless the caller passes allow_public=True or sets
+    # AUTOWEBPOST_ALLOW_PUBLIC=1 - an explicit, recorded decision.
+    public_live: bool = False
 
     def missing_env(self) -> List[str]:
         return missing_secrets(self.env_keys)
@@ -39,6 +44,10 @@ class Publisher(ABC):
         missing = self.missing_env()
         if missing:
             return PostResult(self.slug, False, detail=f"missing env: {', '.join(missing)} (see .env.example)")
+        if self.public_live and not (kw.get("allow_public") or os.environ.get("AUTOWEBPOST_ALLOW_PUBLIC") == "1"):
+            return PostResult(self.slug, False,
+                              detail=f"{self.name} has no draft mode - this post would be public immediately. "
+                                     f"Set AUTOWEBPOST_ALLOW_PUBLIC=1 to override, or use `smoke --force` to test a controlled post.")
         try:
             return self._publish_live(draft, persona, payload, **kw)
         except requests.HTTPError as e:

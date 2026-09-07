@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from autowebpost.models import ArticleDraft, FAQItem, ImageAsset, Persona  # noqa: E402
-from autowebpost.profiles.persona import load_persona  # noqa: E402
+from autowebpost.profiles.persona import EXAMPLE_FILE  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -36,8 +36,13 @@ def no_network(monkeypatch):
 
 @pytest.fixture
 def persona() -> Persona:
-    """The bundled example persona (no network, no user data)."""
-    return load_persona()
+    """The bundled example persona (no network, no user data).
+
+    Always load the example file directly instead of ``data/persona.yaml``:
+    a developer's real persona (or a malformed local edit) must never change
+    or break the suite on their machine.
+    """
+    return Persona.load(EXAMPLE_FILE)
 
 
 @pytest.fixture

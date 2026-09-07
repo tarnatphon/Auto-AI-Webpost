@@ -16,7 +16,7 @@ That line matters: it is the difference between a content platform and a spam bo
 
 - **dev.to** — API key publishing allowed; 4 tags max; use canonical_url; front-page is tag-driven, don't tag-spam.
 - **Medium** — no API; use Import (canonical) only; Partner Program requires disclosure of AI assistance per their rules.
-- **Reddit** — not automated here on purpose. Manual participation, follow each subreddit's 9:1 self-promo ratio norms.
+- **Reddit** — official OAuth adapter exists but is public/undraftable: `publish --live` refuses it unless `AUTOWEBPOST_ALLOW_PUBLIC=1`, and `smoke --live` needs `--force`. Post value, follow each subreddit's 9:1 self-promo ratio norms.
 - **Tumblr / Blogger / WordPress** — one account each, complete profiles, human-paced posting.
 - **Mastodon** — post value, not links-only; instance rules vary.
 - **LinkedIn/Quora/Substack** — manual; adapt the snippet to the platform instead of cross-posting identical text.
@@ -31,6 +31,7 @@ signal, and trust is the center of E-E-A-T.
 
 - Drafts ship with `EDIT-ME` markers and a review checklist.
 - `publish` is a **dry run** unless you pass `--live`.
+- `smoke --live` separately needs `SMOKE_ALLOW_LIVE=1` (or `--allow-live`), `--confirm "I am testing live"`, and `--force` for public/undraftable platforms.
 - API adapters create **drafts** where the platform supports it (dev.to, WP, Blogger, Hashnode).
 - The queue's review window exists so a human decides what goes out.
 

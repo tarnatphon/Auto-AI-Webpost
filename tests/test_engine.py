@@ -9,10 +9,15 @@ from autowebpost.content.engine import (
     Brief,
     LLMProvider,
     ContentEngine,
+    OpenAICompatProvider,
+    PollinationsProvider,
     TemplateProvider,
     _extract_faq,
     _extract_references,
+    _insert_images,
     _parse_sections,
+    _render_faq,
+    _replace_references_section,
     make_provider,
 )
 
@@ -155,6 +160,158 @@ class TestGenerate:
     def test_no_references_when_none_supplied(self, engine):
         d = engine.generate(brief(), generate_images=False)
         assert d.references == []
+
+
+class TestProviders:
+    class _Resp:
+        def __init__(self, payload=None, text="", status=200, url=""):
+            self._payload = payload or {}
+            self.text = text or str(self._payload)
+            self.status_code = status
+            self.url = url
+
+        @property
+        def ok(self):
+            return self.status_code < 400
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                import requests
+                raise requests.HTTPError(f"HTTP {self.status_code}", response=self)
+
+        def json(self):
+            return self._payload
+
+    def test_base_provider_must_be_subclassed(self):
+        with pytest.raises(NotImplementedError):
+            LLMProvider().complete("s", "u")
+
+    def test_openai_complete_builds_the_request(self, monkeypatch):
+        import requests
+        calls = []
+
+        def fake_post(url, **kw):
+            calls.append((url, kw))
+            return self._Resp({"choices": [{"message": {"content": "hi"}}]})
+
+        monkeypatch.setattr(requests, "post", fake_post)
+        p = OpenAICompatProvider("https://api.example.com/v1/", "secret", "gpt-test")
+        assert p.complete("SYS", "USR") == "hi"
+        assert calls[0][0] == "https://api.example.com/v1/chat/completions"
+        body = calls[0][1]["json"]
+        assert body["model"] == "gpt-test"
+        assert calls[0][1]["headers"]["Authorization"].endswith("secret")
+
+    def test_pollinations_post_path(self, monkeypatch):
+        import requests
+        fake = lambda *a, **k: self._Resp({"choices": [{"message": {"content": "ok"}}]})
+        monkeypatch.setattr(requests, "post", fake)
+        assert PollinationsProvider().complete("s", "u") == "ok"
+
+    def test_pollinations_falls_back_to_get(self, monkeypatch):
+        import requests
+        post_calls = []
+
+        def post_boom(*a, **k):
+            post_calls.append(a)
+            raise RequestException("post down")
+
+        monkeypatch.setattr(requests, "post", post_boom)
+        monkeypatch.setattr(requests, "get", lambda *a, **k: self._Resp(text="get answer"))
+        assert PollinationsProvider().complete("s", "u") == "get answer"
+        assert post_calls
+
+    def test_gemini_transport_exception_tries_query_then_raises(self, monkeypatch):
+        """A header transport that *throws* must still try the query transport."""
+        from autowebpost.content.engine import GeminiNativeProvider
+        calls = []
+
+        def post(url, **kw):
+            calls.append(url)
+            if "?key=" not in url:
+                raise ConnectionError("header dead")
+            return self._Resp({"candidates": []})
+
+        monkeypatch.setattr("requests.post", post)
+        with pytest.raises(RuntimeError, match="Gemini native"):
+            GeminiNativeProvider("k").complete("s", "u")
+        assert any("?key=" in u for u in calls)
+
+    def test_make_provider_openai_returns_provider_when_configured(self, monkeypatch):
+        monkeypatch.setenv("OPENAI_API_KEY", "ok")
+        p = make_provider({"provider": "openai", "openai_base_url": "https://x/"})
+        assert p.name == "openai" and p.base_url == "https://x"
+        assert p.model == "gpt-4o-mini"
+
+
+class TestHelpers:
+    def test_empty_faq_renders_a_header(self):
+        assert _render_faq([]) == "## FAQ\n"
+
+    def test_references_replaced_in_place_when_present(self):
+        body = "intro\n\n## References\n\nold\n"
+        out = _replace_references_section(body, ["https://example.com/a"])
+        assert "https://example.com/a" in out
+        assert "old" not in out.split("## References")[1]
+
+    def test_references_appended_when_section_missing(self):
+        out = _replace_references_section("just intro", ["https://example.com/a"])
+        assert out.startswith("just intro")
+        assert "## References" in out
+        assert "https://example.com/a" in out
+
+    def test_insert_images_without_a_placeholder_uses_the_hr(self):
+        from autowebpost.models import ImageAsset
+        d = __import__("autowebpost.models", fromlist=["ArticleDraft"]).ArticleDraft(
+            body_markdown="before\n\n---\n\nafter")
+        d.images = [ImageAsset(path="images/x.jpg", alt_text="alt")]
+        body = _insert_images(d)
+        assert "![alt](images/x.jpg)" in body
+        assert body.count("---") == 1
+
+
+class TestGenerateEdges:
+    class _NoPipeProvider(LLMProvider):
+        name = "no-pipe"
+
+        def complete(self, system, user):
+            return ("<<<TITLE>>>\nKeyword workflow: a guide\n"
+                    "<<<META>>>\n" + ("m" * 130) + "\n"
+                    "<<<TAGS>>>\nkeyword, guide\n"
+                    "<<<BODY>>>\n"
+                    "Keyword workflow is a repeatable method that teams use every "
+                    "day to publish consistently and save time.\n\n"
+                    "## FAQ\n\n### Q?\n\nA.\n\n"
+                    "## References\n\nnone\n"
+                    "<<<KEYWORDS>>>\nkeyword")
+
+    def test_no_pipe_keywords_uses_body_extraction(self, persona):
+        eng = ContentEngine(persona, self._NoPipeProvider())
+        d = eng.generate(brief(primary_keyword="keyword"), generate_images=False)
+        assert d.primary_keyword == "keyword"
+        assert isinstance(d.secondary_keywords, list)
+
+    def test_invalid_meta_falls_back_to_derived_description(self, persona):
+        class ShortMeta(self._NoPipeProvider):
+            def complete(self, system, user):
+                out = super().complete(system, user)
+                return out.replace("m" * 130, "short")
+        eng = ContentEngine(persona, ShortMeta())
+        d = eng.generate(brief(), generate_images=False)
+        assert 100 < len(d.meta_description) < 175
+
+    def test_generate_images_path_attaches_and_inlines(self, persona, tmp_path, monkeypatch):
+        import autowebpost.images.provider as images_mod
+        from autowebpost.models import ImageAsset
+
+        def fake_images_for_draft(draft, max_images=2, draft_dir=None):
+            return [ImageAsset(path="images/hero.jpg", alt_text="hero")]
+
+        monkeypatch.setattr(images_mod, "images_for_draft", fake_images_for_draft)
+        eng = ContentEngine(persona, TemplateProvider())
+        d = eng.generate(brief(), generate_images=True, draft_dir=tmp_path)
+        assert len(d.images) == 1
+        assert "images/hero.jpg" in d.body_markdown
 
 
 class TestProviderFallback:
@@ -335,6 +492,13 @@ class TestGeminiProvider:
     def test_empty_candidates_falls_through_then_raises(self, monkeypatch):
         from autowebpost.content.engine import GeminiNativeProvider
         self._stub(monkeypatch, lambda u, kw, R: R({"candidates": []}))
+        with pytest.raises(RuntimeError, match="empty candidates"):
+            GeminiNativeProvider("k").complete("s", "u")
+
+    def test_candidate_without_text_falls_through_then_raises(self, monkeypatch):
+        from autowebpost.content.engine import GeminiNativeProvider
+        payload = {"candidates": [{"content": {"parts": [{"text": ""}]}}]}
+        self._stub(monkeypatch, lambda u, kw, R: R(payload))
         with pytest.raises(RuntimeError, match="empty candidates"):
             GeminiNativeProvider("k").complete("s", "u")
 

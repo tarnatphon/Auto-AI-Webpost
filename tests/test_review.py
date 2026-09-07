@@ -239,6 +239,9 @@ class TestPublishable:
 
 
 class TestDiscovery:
+    def test_missing_root_returns_empty(self, tmp_path):
+        assert iter_draft_folders(tmp_path / "nothing-here") == []
+
     def test_empty_when_no_drafts(self, tmp_path):
         assert iter_draft_folders(tmp_path) == []
 

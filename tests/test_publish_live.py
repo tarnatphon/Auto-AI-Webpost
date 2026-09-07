@@ -109,6 +109,35 @@ class TestDevTo:
         assert len(body["tags"]) <= 4
 
 
+class TestTelegraphToken:
+    def test_uses_a_cached_token_file(self, persona, monkeypatch, tmp_path):
+        import autowebpost.platforms.telegraph as telegraph_mod
+        token_file = tmp_path / ".telegraph_token"
+        token_file.write_text("cached-token", encoding="utf-8")
+        monkeypatch.setattr(telegraph_mod, "TOKEN_FILE", token_file)
+        monkeypatch.delenv("TELEGRAPH_TOKEN", raising=False)
+        assert telegraph_mod._token(persona) == "cached-token"
+
+    def test_creates_and_caches_an_account_token(self, persona, monkeypatch, tmp_path):
+        import autowebpost.platforms.telegraph as telegraph_mod
+
+        class Resp:
+            status_code = 200
+
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"ok": True, "result": {"access_token": "created-token"}}
+
+        token_file = tmp_path / ".telegraph_token"
+        monkeypatch.setattr(telegraph_mod, "TOKEN_FILE", token_file)
+        monkeypatch.delenv("TELEGRAPH_TOKEN", raising=False)
+        monkeypatch.setattr("requests.get", lambda *a, **k: Resp())
+        assert telegraph_mod._token(persona) == "created-token"
+        assert token_file.read_text(encoding="utf-8") == "created-token"
+
+
 class TestTelegraph:
     def test_creates_a_page_with_a_cached_token(self, draft, persona, monkeypatch):
         monkeypatch.setenv("TELEGRAPH_TOKEN", "tok")
@@ -309,6 +338,22 @@ class TestMastodon:
         rec = stub(monkeypatch, {"api/v1/statuses": FakeResponse({"url": "u"})})
         get("mastodon").publish(draft, persona, live=True)
         assert not [c for c in rec if "media" in c["url"]]
+
+    def test_uploads_a_local_image_successfully(self, draft, persona,
+                                                monkeypatch, tmp_path):
+        monkeypatch.setenv("MASTODON_INSTANCE", "https://mastodon.social")
+        monkeypatch.setenv("MASTODON_TOKEN", "mt")
+        img = tmp_path / "hero.jpg"
+        img.write_bytes(b"\xff\xd8\xff\xd9")
+        draft.images[0].path, draft.images[0].url = str(img), ""
+        rec = stub(monkeypatch, {
+            "api/v2/media": FakeResponse({"id": "media-1"}),
+            "api/v1/statuses": FakeResponse({"url": "https://mastodon.social/@u/1"}),
+        })
+        r = get("mastodon").publish(draft, persona, live=True)
+        assert r.ok is True and r.url == "https://mastodon.social/@u/1"
+        status_call = [c for c in rec if "api/v1/statuses" in c["url"]][0]
+        assert status_call["json"]["media_ids"] == ["media-1"]
 
     def test_media_upload_failure_does_not_block_the_post(self, draft, persona,
                                                           monkeypatch, tmp_path):

@@ -12,10 +12,11 @@ import threading
 import urllib.error
 import urllib.request
 from http.client import HTTPException
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
+import autowebpost.serve as serve_mod
 from autowebpost.drafts import save_draft
 from autowebpost.models import ArticleDraft
 from autowebpost.review import STATUS_APPROVED, set_decision
@@ -59,7 +60,12 @@ def client(tmp_path, monkeypatch):
                     ctype = r.headers.get("Content-Type", "")
                     return r.status, ctype, raw
             except urllib.error.HTTPError as e:
-                return e.code, e.headers.get("Content-Type", ""), e.read()
+                try:
+                    return e.code, e.headers.get("Content-Type", ""), e.read()
+                finally:
+                    # Python 3.14 turns unclosed file-backed HTTP errors into
+                    # ResourceWarnings; close them so -W error stays green.
+                    e.close()
 
         def get(self, path):
             code, ctype, raw = self._req(path)
@@ -295,7 +301,10 @@ class TestAllowLive:
             with urllib.request.urlopen(req, timeout=10) as r:
                 return r.status, json.loads(r.read())
         except urllib.error.HTTPError as e:
-            return e.code, json.loads(e.read())
+            try:
+                return e.code, json.loads(e.read())
+            finally:
+                e.close()
 
     def test_live_publish_reaches_the_adapter(self, live_client, tmp_path, persona):
         port, Fake = live_client
@@ -392,6 +401,138 @@ class TestLauncher:
         body = script.read_text()
         assert ".venv/bin/python3" in body          # venv tried before system
         assert body.index(".venv/bin/python3") < body.index("command -v")
+
+
+class TestErrorPaths:
+    def test_empty_post_body_is_404_not_a_crash(self, client):
+        """No Content-Length -> _body() returns {} and the route 404s."""
+        c, _ = client
+        req = urllib.request.Request(c.base + "/api/queue", data=None, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                code = r.status
+        except urllib.error.HTTPError as e:
+            try:
+                code = e.code
+            finally:
+                e.close()
+        assert code == 404
+
+    def test_malformed_json_body_is_404_not_a_crash(self, client):
+        """A bad body must not raise a raw JSONDecodeError - _body() catches it."""
+        c, _ = client
+        req = urllib.request.Request(c.base + "/api/queue", data=b"{bad json",
+                                     method="POST")
+        req.add_header("Content-Type", "application/json")
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                code = r.status
+        except urllib.error.HTTPError as e:
+            try:
+                code = e.code
+            finally:
+                e.close()
+        assert code == 404
+
+    def test_get_500_does_not_leak_a_traceback(self, seeded, monkeypatch):
+        c, _, _ = seeded
+        monkeypatch.setattr(serve_mod, "load_draft_folder",
+                            Mock(side_effect=RuntimeError("boom")))
+        code, body = c.json("/api/drafts")
+        assert code == 500
+        assert "RuntimeError" in body["error"] and "boom" in body["error"]
+
+    def test_post_500_does_not_leak_a_traceback(self, seeded, monkeypatch):
+        c, _, _ = seeded
+        monkeypatch.setattr(serve_mod, "queue_add",
+                            Mock(side_effect=RuntimeError("queue boom")))
+        code, body = c.post("/api/queue", {"draft": "2026-09-04-a-draft",
+                                           "platforms": ["telegraph"], "at": ""})
+        assert code == 500
+        assert "RuntimeError" in body["error"]
+
+    def test_delete_500_does_not_leak_a_traceback(self, client, monkeypatch):
+        monkeypatch.setattr(serve_mod, "queue_remove",
+                            Mock(side_effect=RuntimeError("rm boom")))
+        c, _ = client
+        code, _, body = c._req("/api/queue/some-id", "DELETE")
+        assert code == 500
+        assert "RuntimeError" in json.loads(body)["error"]
+
+    def test_unknown_post_route_is_404(self, client):
+        c, _ = client
+        code, body = c.post("/api/nope", {})
+        assert code == 404
+        assert "not found" in body["error"]
+
+    def test_unknown_delete_route_is_404(self, client):
+        c, _ = client
+        code, _, body = c._req("/api/nope", "DELETE")
+        assert code == 404
+        assert "not found" in json.loads(body)["error"]
+
+    def test_status_reports_unavailable_provider(self, client, monkeypatch):
+        monkeypatch.setattr(serve_mod, "make_provider",
+                            Mock(side_effect=RuntimeError("no provider")))
+        c, _ = client
+        code, body = c.json("/api/status")
+        assert code == 200
+        assert body["provider"] == "unavailable"
+
+    def test_draft_detail_with_no_article_is_404(self, client):
+        """A folder that passes the traversal guard but has no article.md -> 404."""
+        c, root = client
+        (root / "empty-folder").mkdir()
+        code, body = c.json("/api/drafts/empty-folder")
+        assert code == 404
+        assert "article.md" in body["error"]
+
+    def test_summaries_skips_a_folder_without_a_parsed_draft(self, client, monkeypatch):
+        """A folder on the list that fails to parse is skipped, not fatal."""
+
+        def fake_folders(base): return [client[1] / "bad"]
+
+        monkeypatch.setattr(serve_mod, "iter_draft_folders", fake_folders)
+        monkeypatch.setattr(serve_mod, "load_draft_folder", Mock(return_value=None))
+        c, root = client
+        (root / "bad").mkdir()
+        code, body = c.json("/api/drafts")
+        assert code == 200
+        assert body == []
+
+
+class TestServeFunction:
+    class _FakeServer:
+        def __init__(self):
+            self.closed = False
+            self.RequestHandlerClass = type("H", (), {"dashboard": Dashboard()})
+
+        def serve_forever(self, poll_interval=0.1):
+            self.poll_interval = poll_interval
+            raise KeyboardInterrupt
+
+        def server_close(self):
+            self.closed = True
+
+    def test_runs_until_keyboard_interrupt_and_closes(self, monkeypatch, capsys):
+        fake = self._FakeServer()
+        monkeypatch.setattr(serve_mod, "create_server", lambda *a, **k: fake)
+        # webbrowser is imported inside serve(); patch the real module.
+        monkeypatch.setattr("webbrowser.open",
+                            Mock(side_effect=RuntimeError("no browser")))
+        serve_mod.serve("127.0.0.1", 0, open_browser=True)
+        assert fake.closed is True
+        assert "stopped" in capsys.readouterr().out
+
+    def test_notes_public_bind_and_skips_browser_when_disabled(self, monkeypatch, capsys):
+        fake = self._FakeServer()
+        browser_open = Mock()
+        monkeypatch.setattr(serve_mod, "create_server", lambda *a, **k: fake)
+        monkeypatch.setattr("webbrowser.open", browser_open)
+        serve_mod.serve("0.0.0.0", 0, open_browser=False)
+        out = capsys.readouterr().out
+        assert "bound to all interfaces" in out
+        browser_open.assert_not_called()
 
 
 class TestPortInUse:

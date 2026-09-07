@@ -90,6 +90,12 @@ class TestLoadConfig:
     def test_missing_file_falls_back(self, tmp_path):
         assert isinstance(load_config(tmp_path / "absent.yaml"), dict)
 
+    def test_returns_empty_when_neither_default_nor_example_exists(self, tmp_path,
+                                                                   monkeypatch):
+        import autowebpost.config as cfg
+        monkeypatch.setattr(cfg, "DATA_DIR", tmp_path)
+        assert load_config() == {}
+
 
 class TestUtcHelpers:
     def test_utc_now_is_timezone_aware(self):

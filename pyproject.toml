@@ -34,5 +34,9 @@ exclude = ["tests*"]
 testpaths = ["tests"]
 addopts = "-q --strict-markers"
 filterwarnings = [
+    # Test hygiene: a resource/file leak should fail the suite, not become a
+    # warning hidden in the captured output.
+    "error::ResourceWarning",
+    "error::pytest.PytestUnraisableExceptionWarning",
     "error::DeprecationWarning:autowebpost.*",
 ]

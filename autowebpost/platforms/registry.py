@@ -10,6 +10,7 @@ from .github_pages import GitHubPagesPublisher
 from .hashnode import HashnodePublisher
 from .mastodon import MastodonPublisher
 from .medium import MediumManualPublisher
+from .reddit import RedditPublisher
 from .telegraph import TelegraphPublisher
 from .tumblr import TumblrPublisher
 from .wordpress import WordPressPublisher
@@ -27,6 +28,7 @@ PUBLISHERS: Dict[str, Publisher] = {
         WriteAsPublisher(),
         HashnodePublisher(),
         MediumManualPublisher(),
+        RedditPublisher(),
     ]
 }
 

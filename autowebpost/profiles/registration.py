@@ -71,6 +71,7 @@ class RegistrationAssistant:
             "blogger": ["Get OAuth token via https://developers.google.com/oauthplayground (scope: blogger) -> BLOGGER_ACCESS_TOKEN, BLOGGER_BLOG_ID in .env"],
             "tumblr": ["Create one app at tumblr.com/oauth/apps -> TUMBLR_CONSUMER_KEY/SECRET in .env -> run: python -m autowebpost.cli connect tumblr"],
             "mastodon": ["Preferences -> Development -> New Application (write:statuses, write:media) -> MASTODON_INSTANCE + MASTODON_TOKEN in .env"],
+            "reddit": ["Create a script app at https://www.reddit.com/prefs/apps -> REDDIT_CLIENT_ID/SECRET + REDDIT_USERNAME/PASSWORD/SUBREDDIT in .env. Posting is public and heavily policed - read subreddit rules, post value, never bulk-link."],
             "writeas": ["Optional: create account -> WRITEAS_ALIAS + WRITEAS_PASSWORD in .env (anonymous posting also works)"],
             "githubpages": ["Create repo <user>.github.io -> Settings -> Pages -> enable -> create a fine-grained PAT with Contents read/write -> GITHUB_TOKEN + GITHUB_REPO in .env"],
             "telegraph": ["Nothing to register - telegra.ph needs no account. Token is created automatically on first post."],
