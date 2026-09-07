@@ -15,7 +15,7 @@ class TestRegistry:
     def test_all_publishers_are_registered(self):
         assert set(ALL_SLUGS) == {
             "blogger", "devto", "githubpages", "hashnode", "mastodon",
-            "medium", "telegraph", "tumblr", "wordpress", "writeas",
+            "medium", "reddit", "telegraph", "tumblr", "wordpress", "writeas",
         }
 
     def test_get_returns_the_publisher(self):

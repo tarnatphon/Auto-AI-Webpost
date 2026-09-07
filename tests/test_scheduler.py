@@ -14,8 +14,11 @@ def queue_in_tmp(tmp_path, monkeypatch):
     monkeypatch.setattr(scheduler, "QUEUE_FILE", tmp_path / "queue.yaml")
 
 
-def add(draft="output/drafts/x/article.md", platforms=("telegraph",), at=None, delay=0):
-    return scheduler.add(draft, list(platforms), at, delay_minutes=delay)
+def add(draft="output/drafts/x/article.md", platforms=("telegraph",), at=None, delay=0,
+        max_attempts=None, retry_minutes=None):
+    return scheduler.add(draft, list(platforms), at, delay_minutes=delay,
+                         max_attempts=max_attempts or scheduler.DEFAULT_MAX_ATTEMPTS,
+                         retry_minutes=retry_minutes or scheduler.DEFAULT_RETRY_MINUTES)
 
 
 class TestAdd:
@@ -130,12 +133,21 @@ class TestRunDue:
         add(draft=str(folder / "article.md"), at="not-a-date")
         assert len(scheduler.run_due()) == 1
 
-    def test_missing_draft_file_fails_the_entry_not_the_run(self, tmp_path):
-        add(draft=str(tmp_path / "gone" / "article.md"), at="2000-01-01 09:00")
-        done = scheduler.run_due()
+    def test_missing_draft_file_retries_then_fails(self, tmp_path):
+        start = datetime(2000, 1, 1, 9, 0)
+        add(draft=str(tmp_path / "gone" / "article.md"), at="2000-01-01 09:00",
+            max_attempts=2, retry_minutes=30)
+        done = scheduler.run_due(now=start)
         assert len(done) == 1
+        assert done[0]["status"] == "retrying"
+        assert done[0]["attempts"] == 1
+        assert done[0]["next_attempt_at"] == "2000-01-01 09:30"
+        assert "cannot load draft" in done[0]["results"][0]["detail"]
+
+        # After the retry window has passed it tries once more, then fails.
+        done = scheduler.run_due(now=datetime(2000, 1, 1, 10, 0))
         assert done[0]["status"] == "failed"
-        assert "cannot load draft" in done[0]["results"][0]["error"]
+        assert done[0]["attempts"] == 2
 
     def test_regression_unknown_platform_does_not_abort_the_run(self, tmp_path):
         """One typo'd slug used to raise KeyError and kill the entire queue run."""
@@ -188,8 +200,54 @@ class TestRunDue:
         done = scheduler.run_due(live=True)
         assert done and done[0]["status"] == "published"
 
-    def test_live_run_marks_failed_when_a_platform_errors(self, tmp_path, monkeypatch):
+    def test_live_failure_retries_then_fails(self, tmp_path, monkeypatch):
+        start = datetime(2000, 1, 1, 9, 0)
         stub_telegraph(monkeypatch, ok=False)
-        add(draft=self._draft(tmp_path), platforms=["telegraph"], at="2000-01-01 09:00")
-        done = scheduler.run_due(live=True)
+        add(draft=self._draft(tmp_path), platforms=["telegraph"], at="2000-01-01 09:00",
+            max_attempts=2, retry_minutes=30)
+        done = scheduler.run_due(live=True, now=start)
+        assert done and done[0]["status"] == "retrying"
+        assert done[0]["attempts"] == 1
+        assert done[0]["next_attempt_at"] == "2000-01-01 09:30"
+
+        done = scheduler.run_due(live=True, now=datetime(2000, 1, 1, 10, 0))
         assert done and done[0]["status"] == "failed"
+        assert done[0]["attempts"] == 2
+
+    def test_unknown_slug_is_never_retried(self, tmp_path):
+        add(draft=self._draft(tmp_path), platforms=["myspace"], at="2000-01-01 09:00",
+            max_attempts=3, retry_minutes=30)
+        done = scheduler.run_due(now=datetime(2000, 1, 1, 9, 0))
+        assert done[0]["status"] == "failed"
+        assert done[0]["attempts"] == 1
+        assert done[0].get("next_attempt_at")  # kept, but status is terminal
+
+    def test_retry_only_reposts_platforms_that_failed(self, tmp_path, monkeypatch):
+        start = datetime(2000, 1, 1, 9, 0)
+        monkeypatch.setenv("DEVTO_API_KEY", "k")
+        monkeypatch.setenv("TELEGRAPH_TOKEN", "stub-token")
+
+        class Resp:
+            status_code = 200
+
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"url": "https://dev.to/x"} if "dev.to" in self._url else {"ok": False, "error": "boom"}
+
+        def fake_post(url, *a, **k):
+            r = Resp(); r._url = str(url); return r
+
+        monkeypatch.setattr("requests.post", fake_post)
+        add(draft=self._draft(tmp_path), platforms=["devto", "telegraph"],
+            at="2000-01-01 09:00", max_attempts=2, retry_minutes=30)
+        done = scheduler.run_due(live=True, now=start)
+        assert done[0]["status"] == "retrying"
+        assert done[0]["platform_status"]["devto"] == "ok"
+        assert done[0]["platform_status"]["telegraph"] == "failed"
+
+        done = scheduler.run_due(live=True, now=datetime(2000, 1, 1, 10, 0))
+        assert done[0]["status"] == "failed"
+        devto_results = [r for r in done[0]["results"] if r.get("platform") == "devto"]
+        assert len(devto_results) == 1  # never double-posted

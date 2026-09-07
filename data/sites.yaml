@@ -182,12 +182,15 @@
   name: Reddit
   url: https://www.reddit.com
   signup_url: https://www.reddit.com/register
-  da: 91
+  da: 94
   dofollow: false
   api: free
+  api_docs: https://www.reddit.com/dev/api/#POST_api_submit
+  publisher: reddit
   category: community
-  best_for: "Niche subreddits - traffic and feedback, NOT link drops"
-  notes: "API exists but automated posting is heavily policed. Participate manually, follow each subreddit's self-promo rules, or you will be banned platform-wide."
+  best_for: "Niche subreddits - discovery and feedback, NOT link drops"
+  notes: "Official OAuth API adapter present, but posting is public and heavily policed. Read subreddit rules, post value, do not bulk-link. Requires a script app at /prefs/apps."
+  env_keys: [REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_USERNAME, REDDIT_PASSWORD, REDDIT_SUBREDDIT]
 
 - slug: livejournal
   name: LiveJournal

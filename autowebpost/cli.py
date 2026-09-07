@@ -20,6 +20,7 @@ from .content.engine import Brief, ContentEngine, make_provider
 from .drafts import draft_folder, save_draft
 from .platforms import get_many
 from .profiles import RegistrationAssistant, Vault, load_persona
+from .smoke import CONFIRM_TEXT, run_smoke
 from .profiles.persona import bootstrap as bootstrap_persona
 from .research.keywords import expand, suggest
 from .scheduler import add as queue_add, entries as queue_entries, remove as queue_remove, run_due
@@ -194,12 +195,17 @@ def cmd_publish(args):
 def cmd_queue(args):
     if args.cmd == "add":
         e = queue_add(args.draft, [p.strip() for p in args.platforms.split(",")], args.at,
-                      delay_minutes=args.delay)
-        print(f"Queued {e['id']}: {args.draft} -> {args.platforms} at {e['publish_at']}")
+                      delay_minutes=args.delay, max_attempts=args.max_attempts,
+                      retry_minutes=args.retry_minutes)
+        print(f"Queued {e['id']}: {args.draft} -> {args.platforms} at {e['publish_at']} "
+              f"(retry {e['max_attempts']}x {e['retry_minutes']}m)")
     elif args.cmd == "list":
-        for e in queue_entries():
-            print(f"[{e['status']:9}] {e['id']}  {e['publish_at']}  {Path(e['draft']).parent.name}  -> {','.join(e['platforms'])}")
-        if not queue_entries():
+        entries = queue_entries()
+        for e in entries:
+            print(f"[{e['status']:9}] {e['id']}  {e['publish_at']}  "
+                  f"attempt {e.get('attempts', 0)}/{e.get('max_attempts', '?')}  "
+                  f"{Path(e['draft']).parent.name}  -> {','.join(e['platforms'])}")
+        if not entries:
             print("Queue is empty.")
     elif args.cmd == "remove":
         print("Removed." if queue_remove(args.id) else "Not found.")
@@ -208,9 +214,38 @@ def cmd_queue(args):
         if not done:
             print("Nothing due.")
         for e in done:
-            print(f"[{e['status']}] {e['draft']}")
+            print(f"[{e['status']}] {e['draft']}  (attempt {e.get('attempts', 0)}/"
+                  f"{e.get('max_attempts', '?')})"
+                  + (f"  next {e['next_attempt_at']}" if e.get("next_attempt_at") else ""))
             for r in e.get("results", []):
                 print(f"   - {r.get('platform')}: {'OK ' if r.get('ok') else 'FAIL'} {r.get('url') or r.get('detail') or r.get('note', '')}")
+
+
+def cmd_smoke(args):
+    from .models import ArticleDraft
+    draft = ArticleDraft.load(args.draft) if args.draft else None
+    report = run_smoke(
+        draft=draft,
+        platforms=[p.strip() for p in args.platforms.split(",") if p.strip()],
+        live=args.live,
+        confirm=args.confirm,
+        force=args.force,
+        allow_live=args.allow_live,
+        save_report=not args.no_save,
+    )
+    print(f"\nSMOKE {'LIVE' if report.live else 'DRY-RUN'}  platforms: {', '.join(report.platforms)}")
+    if not report.allowed:
+        print(f"  Gate blocked: {report.gate_message}\n")
+        return 1
+    for r in report.results:
+        print("  " + r.summary())
+    ok = report.ok
+    print(f"\nSummary: {sum(1 for r in report.results if r.ok)}/{len(report.results)} platforms OK."
+          + (" Smoke run passed." if ok else " Some platforms did not pass."))
+    if args.live and ok:
+        print("Live smoke completed. Anything created was either a draft or an explicitly forced"
+              " test post - inspect and delete it before real use.")
+    return 0 if ok else 1
 
 
 def cmd_run(args):
@@ -308,6 +343,10 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--at", default="", help='"YYYY-MM-DD HH:MM" (UTC)')
     q.add_argument("--id")
     q.add_argument("--delay", type=int, default=0, help="minutes between platforms")
+    q.add_argument("--max-attempts", type=int, default=3,
+                   help="max scheduler attempts before an entry fails (default 3)")
+    q.add_argument("--retry-minutes", type=int, default=15,
+                   help="minutes before a failed entry is retried (default 15)")
     q.add_argument("--live", action="store_true")
     q.set_defaults(fn=cmd_queue)
 
@@ -321,6 +360,19 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("connect", help="one-time OAuth connection for a platform")
     s.add_argument("service", choices=["tumblr"])
     s.set_defaults(fn=cmd_connect)
+
+    s = sub.add_parser("smoke", help="live-but-controlled connectivity test against real free APIs")
+    s.add_argument("--draft", help="reuse a draft file instead of the built-in smoke draft")
+    s.add_argument("--platforms", default="devto,wordpress,blogger",
+                   help="comma separated publishers (default: draft-capable ones)")
+    s.add_argument("--live", action="store_true", help="actually hit the APIs (dry-run by default)")
+    s.add_argument("--confirm", default="", help=f"must be: {CONFIRM_TEXT} for live")
+    s.add_argument("--force", action="store_true",
+                   help="include public/undraftable platforms (telegraph, writeas, mastodon, reddit)")
+    s.add_argument("--allow-live", action="store_true",
+                   help="explicit permission for live (alternative to SMOKE_ALLOW_LIVE=1)")
+    s.add_argument("--no-save", action="store_true", help="don't write output/smoke/*.json")
+    s.set_defaults(fn=cmd_smoke)
 
     s = sub.add_parser("serve", help="local review dashboard (approve drafts before publishing)")
     s.add_argument("--host", default="127.0.0.1",

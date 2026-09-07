@@ -87,6 +87,7 @@ Or one shot: `python -m autowebpost.cli run --topic "..." --to githubpages,devto
 | `queue add/list/remove/run` | drip scheduler with stagger between platforms |
 | `run --topic ... --wait N` | one-shot pipeline with review window |
 | `serve [--host --port]` | local review dashboard: approve drafts before anything publishes |
+| `smoke [--live] [--confirm ...]` | live-but-controlled connectivity test against real APIs (dry-run by default) |
 | `connect tumblr` | one-time OAuth for Tumblr |
 
 ## Content engine
@@ -105,12 +106,15 @@ Or one shot: `python -m autowebpost.cli run --topic "..." --to githubpages,devto
 
 ## Free publishing targets (August 2026, researched)
 
-Auto-post via API: **GitHub Pages** (DA 96, your origin) · **Blogger** (96) · **WordPress** (93) · **Tumblr** (91) · **Mastodon** (90) · **Telegra.ph** (88, no account needed) · **dev.to** (82) · **Write.as** (75) · Hashnode (API now Pro-only, flagged) · Medium (API retired — prepared manual-import flow). Catalog also covers LinkedIn, Substack, Quora, Reddit, LiveJournal, HubPages, Steemit, Google Sites with per-site strategy notes: `data/sites.yaml`.
+Auto-post via API: **GitHub Pages** (DA 96, your origin) · **Blogger** (96) · **Reddit** (94, official OAuth, public/undraftable — force-gated) · **WordPress** (93) · **Tumblr** (91) · **Mastodon** (90) · **Telegra.ph** (88, no account needed) · **dev.to** (82) · **Write.as** (75) · Hashnode (API now Pro-only, flagged) · Medium (API retired — prepared manual-import flow). Catalog also covers LinkedIn, Substack, Quora, LiveJournal, HubPages, Steemit, Google Sites with per-site strategy notes: `data/sites.yaml`.
 
 ## Safety model (why your accounts survive)
 
 - Publishing only through **official APIs**, one account per site, created by **you** — the register assistant prepares forms and passwords but never auto-submits signups (ToS violation = platform-wide bans).
 - **Dry-run by default**; adapters create **drafts** on platforms that support them; canonical URLs on every syndicated copy; disclosure note included; queue staggers platforms.
+- **`smoke` is a separate, double-gated path**: live runs need `SMOKE_ALLOW_LIVE=1` (or `--allow-live`) *and* `--confirm "I am testing live"`, and public/undraftable platforms (Reddit, Mastodon, Write.as, Telegraph) additionally need `--force`. It only posts an obvious "smoke test" draft, never your real content, and writes the report to `output/smoke/`.
+- **Undraftable platforms are gated at publish time too.** Reddit's adapter refuses `publish --live` unless you set `AUTOWEBPOST_ALLOW_PUBLIC=1` (i.e. `publish` and `smoke` both require an explicit decision before they post public content).
+- **The queue retries failures** (`--max-attempts`, `--retry-minutes`): a failed platform is retried on the next scheduled run, already-successful platforms are never reposted, and a permanent config error (unknown slug) fails immediately instead of spinning.
 - See [docs/03-compliance.md](docs/03-compliance.md). Quality gate > volume: Google's scaled-content-abuse policy is the main risk to any auto-posting workflow, and the review step is what keeps you on the right side of it.
 
 ## Mac ⇄ GitHub sync (`/Volumes/AI/Auto AI WebPost`)
@@ -131,7 +135,7 @@ The workflow template lives at `.github/workflow-templates/autopost.yml` — `sc
 ```
 autowebpost/          the engine (content, images, platforms, profiles, research,
                       scheduler, review, serve)
-tests/                435 offline tests (pytest) - 95% coverage of autowebpost/
+tests/                462 offline tests (pytest) - 94% coverage of autowebpost/
 data/                 catalog (sites.yaml) + persona/config templates + .env.example
 docs/                 research report · SEO/E-E-A-T playbook · compliance rules
 scripts/              mac-setup.sh · sync_local.sh
@@ -166,11 +170,35 @@ The gates are enforced server-side, not just hidden in the UI:
 Review state lives in `review.yaml` next to the article, so it travels with the
 draft.
 
+## Live smoke (optional, real APIs)
+
+The offline suite proves the payloads; `smoke` proves the credentials and the
+API actually accept them - without turning a keyword run into forty live posts.
+
+```bash
+# dry run: builds and prints every platform payload, zero HTTP
+bash bin/autowebpost smoke --platforms devto,wordpress,blogger
+
+# live check on draft-safe platforms (dev.to, WordPress, Blogger, Tumblr)
+SMOKE_ALLOW_LIVE=1 bash bin/autowebpost smoke --live \
+  --confirm "I am testing live" --platforms devto,wordpress
+
+# also test public/undraftable endpoints (Reddit, Mastodon, Write.as, Telegraph)
+SMOKE_ALLOW_LIVE=1 bash bin/autowebpost smoke --live \
+  --confirm "I am testing live" --force --platforms reddit,mastodon,telegraph
+```
+
+Every run writes `output/smoke/smoke-last.json` (and a timestamped copy), so you
+can inspect / archive the result. Anything live that is a draft should be left
+in the platform's draft queue; anything forced public (Reddit, Mastodon,
+Telegraph, anonymous Write.as) should be deleted after you've seen it succeed.
+The command never uses your real draft unless you pass `--draft` explicitly.
+
 ## Development
 
 ```bash
 pip install -r requirements-dev.txt
-pytest                                   # 435 tests, fully offline, ~5s
+pytest                                   # 462 tests, fully offline, ~5s
 pytest --cov=autowebpost --cov-report=term-missing
 ```
 
@@ -202,6 +230,7 @@ pip install -e .          # then: autowebpost sites
 | Mastodon | ✅ app token | snippet + link |
 | Write.as | ✅ optional account | anonymous OK |
 | Hashnode | ⚠️ Pro now ($5/mo, May 2026) | adapter present, flagged |
+| Reddit | ✅ OAuth2 official API | **public/undraftable**; `smoke` and `publish` require explicit force gate |
 | Medium | 🖐 prepared manual import | API retired 2025-26 |
 
 ## Troubleshooting
@@ -217,6 +246,22 @@ pip install -e .          # then: autowebpost sites
 | `generate` falls back to the offline template | No network or Pollinations unreachable. That fallback is by design; force it with `AUTOWEBPOST_PROVIDER=template`. |
 
 ## Changelog
+
+### 2026-09-07 — live smoke, Reddit adapter, scheduler retry
+
+- **`smoke` command** (`autowebpost smoke`): live-but-controlled connectivity
+  tests against real APIs. Dry-run by default; live needs `SMOKE_ALLOW_LIVE=1`
+  (or `--allow-live`) **and** `--confirm "I am testing live"`; public platforms
+  also need `--force` so an accidental live run cannot create public content.
+  Reports go to `output/smoke/`.
+- **Reddit adapter** (official OAuth2, DA 94): first new platform since the
+  catalog. Public/undraftable on purpose - it is never in the default syndication
+  list, and both `smoke` and anything live treat it as force-gated. Payload
+  creates link or self posts from the draft and reads subreddit rules first.
+- **Scheduler failover**: a failed platform now marks the entry `retrying`
+  (`--max-attempts`, `--retry-minutes` on `queue add`); only failed platforms are
+  retried, already-successful ones are never reposted, and an unknown slug fails
+  immediately instead of retrying forever.
 
 ### 2026-09-07 — branch consolidation + doc refresh
 
