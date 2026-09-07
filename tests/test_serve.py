@@ -60,7 +60,12 @@ def client(tmp_path, monkeypatch):
                     ctype = r.headers.get("Content-Type", "")
                     return r.status, ctype, raw
             except urllib.error.HTTPError as e:
-                return e.code, e.headers.get("Content-Type", ""), e.read()
+                try:
+                    return e.code, e.headers.get("Content-Type", ""), e.read()
+                finally:
+                    # Python 3.14 turns unclosed file-backed HTTP errors into
+                    # ResourceWarnings; close them so -W error stays green.
+                    e.close()
 
         def get(self, path):
             code, ctype, raw = self._req(path)
@@ -296,7 +301,10 @@ class TestAllowLive:
             with urllib.request.urlopen(req, timeout=10) as r:
                 return r.status, json.loads(r.read())
         except urllib.error.HTTPError as e:
-            return e.code, json.loads(e.read())
+            try:
+                return e.code, json.loads(e.read())
+            finally:
+                e.close()
 
     def test_live_publish_reaches_the_adapter(self, live_client, tmp_path, persona):
         port, Fake = live_client
@@ -404,7 +412,10 @@ class TestErrorPaths:
             with urllib.request.urlopen(req, timeout=10) as r:
                 code = r.status
         except urllib.error.HTTPError as e:
-            code = e.code
+            try:
+                code = e.code
+            finally:
+                e.close()
         assert code == 404
 
     def test_malformed_json_body_is_404_not_a_crash(self, client):
@@ -417,7 +428,10 @@ class TestErrorPaths:
             with urllib.request.urlopen(req, timeout=10) as r:
                 code = r.status
         except urllib.error.HTTPError as e:
-            code = e.code
+            try:
+                code = e.code
+            finally:
+                e.close()
         assert code == 404
 
     def test_get_500_does_not_leak_a_traceback(self, seeded, monkeypatch):

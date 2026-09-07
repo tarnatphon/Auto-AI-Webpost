@@ -18,10 +18,14 @@ def offline_and_temp(monkeypatch, tmp_path):
     """Force the offline provider and redirect drafts/queue away from the repo."""
     import autowebpost.cli as cli_mod
     import autowebpost.drafts as drafts_mod
+    import autowebpost.profiles.persona as persona_mod
     from autowebpost.content.engine import TemplateProvider
 
     monkeypatch.setattr(cli_mod, "make_provider", lambda cfg: TemplateProvider())
     monkeypatch.setattr(drafts_mod, "OUTPUT_DIR", tmp_path / "output")
+    # Never let a real data/persona.yaml on the developer's machine change CLI
+    # test expectations - force the bundled example persona instead.
+    monkeypatch.setattr(persona_mod, "PERSONA_FILE", tmp_path / "no-persona.yaml")
     return tmp_path
 
 

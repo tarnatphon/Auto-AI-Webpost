@@ -4,7 +4,8 @@ from __future__ import annotations
 import pytest
 
 import autowebpost.profiles.persona as persona_mod
-from autowebpost.profiles.persona import bootstrap, load_persona, persona_path
+from autowebpost.profiles.persona import (EXAMPLE_FILE, bootstrap,
+                                          load_persona, persona_path)
 
 
 @pytest.fixture
@@ -16,7 +17,9 @@ def persona_file(tmp_path, monkeypatch):
 
 class TestLoadPersona:
     def test_loads_the_bundled_example(self):
-        p = load_persona()
+        # Load the bundled file directly so a developer's real data/persona.yaml
+        # cannot change what this test measures.
+        p = load_persona(EXAMPLE_FILE)
         assert p.name and p.brand and p.expertise
 
     def test_prefers_the_user_file_when_present(self, persona_file):
@@ -74,7 +77,8 @@ class TestRegistrationAssistant:
         from autowebpost.profiles import RegistrationAssistant
         monkeypatch.setattr(vault_mod, "CRED_FILE", tmp_path / "creds.yaml")
         monkeypatch.setattr(vault_mod, "STATUS_FILE", tmp_path / "status.yaml")
-        return RegistrationAssistant(load_persona())
+        # Use the bundled persona, never the developer's real identity file.
+        return RegistrationAssistant(load_persona(EXAMPLE_FILE))
 
     def test_plan_shows_signup_fields(self, assistant):
         plans = assistant.plan(["devto"])
