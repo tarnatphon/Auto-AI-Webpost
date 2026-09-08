@@ -15,7 +15,7 @@ from pathlib import Path
 
 from . import __version__
 from .catalog import load_sites, sites_table
-from .config import load_config, utc_now, utc_stamp
+from .config import load_config, load_env, utc_now, utc_stamp
 from .content.engine import Brief, ContentEngine, make_provider
 from .drafts import draft_folder, save_draft
 from .platforms import get_many
@@ -394,6 +394,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv=None):
+    # Load .env before any command runs so secrets (e.g. OPENAI_API_KEY,
+    # platform tokens) are available in a plain shell without `source .env`.
+    # It never overrides real environment variables.
+    load_env()
     ap = build_parser()
     args = ap.parse_args(argv)
     if not getattr(args, "fn", None):

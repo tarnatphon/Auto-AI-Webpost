@@ -26,6 +26,10 @@ def offline_and_temp(monkeypatch, tmp_path):
     # Never let a real data/persona.yaml on the developer's machine change CLI
     # test expectations - force the bundled example persona instead.
     monkeypatch.setattr(persona_mod, "PERSONA_FILE", tmp_path / "no-persona.yaml")
+    # Keep CLI tests hermetic: main() now auto-loads .env, so point it at a
+    # missing file instead of the developer's real one.
+    import autowebpost.config as cfg_mod
+    monkeypatch.setattr(cfg_mod, "ROOT", tmp_path)
     return tmp_path
 
 
