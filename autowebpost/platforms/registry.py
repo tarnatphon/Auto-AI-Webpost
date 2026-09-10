@@ -8,12 +8,15 @@ from .blogger import BloggerPublisher
 from .devto import DevToPublisher
 from .github_pages import GitHubPagesPublisher
 from .hashnode import HashnodePublisher
+from .line import LinePublisher
 from .mastodon import MastodonPublisher
 from .medium import MediumManualPublisher
 from .telegraph import TelegraphPublisher
 from .tumblr import TumblrPublisher
 from .wordpress import WordPressPublisher
 from .writeas import WriteAsPublisher
+
+_line = LinePublisher()
 
 PUBLISHERS: Dict[str, Publisher] = {
     p.slug: p for p in [
@@ -27,8 +30,11 @@ PUBLISHERS: Dict[str, Publisher] = {
         WriteAsPublisher(),
         HashnodePublisher(),
         MediumManualPublisher(),
+        _line,
     ]
 }
+PUBLISHERS["line_oa"] = _line
+PUBLISHERS["line-oa"] = _line
 
 
 def get(name: str) -> Publisher:

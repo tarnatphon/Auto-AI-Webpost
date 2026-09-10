@@ -72,7 +72,7 @@ Or one shot: `python -m autowebpost.cli run --topic "..." --to githubpages,devto
 | `publish DRAFT --to a,b [--live]` | publish via official APIs (**dry-run default**, drafts where supported) |
 | `queue add/list/remove/run` | drip scheduler with stagger between platforms |
 | `run --topic ... --wait N` | one-shot pipeline with review window |
-| `connect tumblr` | one-time OAuth for Tumblr |
+| `connect tumblr\|line` | one-time OAuth / token connection test (Tumblr, LINE OA) |
 
 ## Content engine
 
@@ -82,13 +82,14 @@ Or one shot: `python -m autowebpost.cli run --topic "..." --to githubpages,devto
 
 ## Free publishing targets (August 2026, researched)
 
-Auto-post via API: **GitHub Pages** (DA 96, your origin) · **Blogger** (96) · **WordPress** (93) · **Tumblr** (91) · **Mastodon** (90) · **Telegra.ph** (88, no account needed) · **dev.to** (82) · **Write.as** (75) · Hashnode (API now Pro-only, flagged) · Medium (API retired — prepared manual-import flow). Catalog also covers LinkedIn, Substack, Quora, Reddit, LiveJournal, HubPages, Steemit, Google Sites with per-site strategy notes: `data/sites.yaml`.
+Auto-post via API: **GitHub Pages** (DA 96, your origin) · **Blogger** (96) · **WordPress** (93) · **LINE OA** (92) · **Tumblr** (91) · **Mastodon** (90) · **Telegra.ph** (88, no account needed) · **dev.to** (82) · **Write.as** (75) · Hashnode (API now Pro-only, flagged) · Medium (API retired — prepared manual-import flow). Catalog also covers LinkedIn, Substack, Quora, Reddit, LiveJournal, HubPages, Steemit, Google Sites with per-site strategy notes: `data/sites.yaml`.
 
 ## Safety model (why your accounts survive)
 
 - Publishing only through **official APIs**, one account per site, created by **you** — the register assistant prepares forms and passwords but never auto-submits signups (ToS violation = platform-wide bans).
 - **Dry-run by default**; adapters create **drafts** on platforms that support them; canonical URLs on every syndicated copy; disclosure note included; queue staggers platforms.
 - See [docs/03-compliance.md](docs/03-compliance.md). Quality gate > volume: Google's scaled-content-abuse policy is the main risk to any auto-posting workflow, and the review step is what keeps you on the right side of it.
+- For LINE OA setup: see [docs/04-line-oa-setup.md](docs/04-line-oa-setup.md).
 
 ## Mac ⇄ GitHub sync (`/Volumes/AI/Auto AI WebPost`)
 
@@ -108,7 +109,7 @@ The workflow template lives at `.github/workflow-templates/autopost.yml` — `sc
 ```
 autowebpost/          the engine (content, images, platforms, profiles, research, scheduler)
 data/                 catalog (sites.yaml) + persona/config templates + .env.example
-docs/                 research report · SEO/E-E-A-T playbook · compliance rules
+docs/                 research report · SEO/E-E-A-T playbook · compliance rules · LINE OA guide
 scripts/              mac-setup.sh · sync_local.sh
 output/drafts/        generated drafts + images + checklists (gitignored; example committed)
 .github/workflows/    free cloud scheduler
@@ -123,6 +124,7 @@ output/drafts/        generated drafts + images + checklists (gitignored; exampl
 | WordPress (.com/self-hosted) | ✅ app password | drafts by default |
 | GitHub Pages | ✅ PAT | your origin site |
 | Blogger | ✅ OAuth2 token | drafts by default |
+| LINE OA | ✅ free Messaging API | direct broadcasts to followers |
 | Tumblr | ✅ OAuth1 (`connect tumblr`) | dofollow |
 | Mastodon | ✅ app token | snippet + link |
 | Write.as | ✅ optional account | anonymous OK |

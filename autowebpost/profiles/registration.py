@@ -22,7 +22,7 @@ from typing import List
 from ..catalog import Site, by_slug, load_sites
 from .vault import Vault
 
-DEFAULT_SITES = ["devto", "telegraph", "wordpress", "blogger", "tumblr", "mastodon", "writeas", "githubpages"]
+DEFAULT_SITES = ["devto", "telegraph", "wordpress", "blogger", "tumblr", "mastodon", "writeas", "githubpages", "line"]
 
 
 @dataclass
@@ -76,6 +76,13 @@ class RegistrationAssistant:
             "telegraph": ["Nothing to register - telegra.ph needs no account. Token is created automatically on first post."],
             "hashnode": ["Settings -> Developer -> Personal Access Token (NOTE: API publishing now requires Hashnode Pro, $5/mo) -> HASHNODE_TOKEN + HASHNODE_PUBLICATION_ID"],
             "medium": ["Just sign up normally; posting is via 'Import a story' (no API since 2025)"],
+            "line": [
+                "Go to https://developers.line.biz/ -> Log in with LINE",
+                "Create Provider (company name) -> Create Messaging API channel",
+                "Messaging API tab -> Issue long-lived Channel access token -> LINE_CHANNEL_ACCESS_TOKEN in .env",
+                "Set Auto-reply messages to Disabled in Messaging API tab",
+                "Scan QR code / Bot basic ID from console to add the OA as friend on your phone",
+            ],
         }
         return common + specific.get(site.slug, [f"Check {site.api_docs or site.url + '/docs'} for the API key location"])
 

@@ -210,8 +210,42 @@ def cmd_connect(args):
     if args.service == "tumblr":
         from .platforms.tumblr import run_connect_flow
         run_connect_flow()
+    elif args.service == "line":
+        from .platforms.line import get_bot_info, get_quota, send_broadcast
+        from .config import get_secret
+        token = get_secret("LINE_CHANNEL_ACCESS_TOKEN")
+        if not token:
+            token = input("LINE Channel Access Token: ").strip()
+        if not token:
+            print("Error: No Channel Access Token provided.")
+            return 1
+        print("\nVerifying LINE OA connection...")
+        try:
+            bot = get_bot_info(token)
+            print(f"  Bot name : {bot.get('displayName')}")
+            print(f"  Bot ID   : {bot.get('basicId', bot.get('userId', '-'))}")
+        except Exception as e:
+            print(f"  Connection failed: {e}")
+            return 1
+        try:
+            quota = get_quota(token)
+            q_type = quota.get("type", "unknown")
+            val = quota.get("value", "unlimited")
+            print(f"  Quota    : {val} ({q_type})")
+        except Exception as e:
+            print(f"  Could not read quota: {e}")
+
+        test = input("\nSend test broadcast to followers now? [y/N]: ").strip().lower()
+        if test == "y":
+            try:
+                send_broadcast(token, [{"type": "text", "text": "ทดสอบระบบจาก Luke Social Agency"}])
+                print("  Test broadcast sent successfully!")
+            except Exception as e:
+                print(f"  Test broadcast failed: {e}")
+                return 1
+        print("\nLINE connector verified. Ensure LINE_CHANNEL_ACCESS_TOKEN is in your .env.\n")
     else:
-        print("Available: tumblr")
+        print("Available: tumblr, line")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -252,7 +286,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("publish", help="publish a draft to platforms (DRY RUN by default)")
     s.add_argument("draft")
-    s.add_argument("--to", required=True, help="comma separated: telegraph,devto,wordpress,githubpages,blogger,tumblr,mastodon,writeas,hashnode,medium")
+    s.add_argument("--to", required=True, help="comma separated: telegraph,devto,wordpress,githubpages,blogger,tumblr,mastodon,writeas,hashnode,medium,line")
     s.add_argument("--live", action="store_true")
     s.set_defaults(fn=cmd_publish)
 
@@ -274,7 +308,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.set_defaults(fn=cmd_run)
 
     s = sub.add_parser("connect", help="one-time OAuth connection for a platform")
-    s.add_argument("service", choices=["tumblr"])
+    s.add_argument("service", choices=["tumblr", "line"])
     s.set_defaults(fn=cmd_connect)
 
     return ap

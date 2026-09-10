@@ -143,6 +143,20 @@
   notes: "Post snippets + links, not full articles. Free app token from your instance settings."
   env_keys: [MASTODON_INSTANCE, MASTODON_TOKEN]
 
+- slug: line
+  name: LINE Official Account
+  url: https://developers.line.biz
+  signup_url: https://developers.line.biz/console/
+  da: 92
+  dofollow: false
+  api: free
+  api_docs: https://developers.line.biz/en/reference/messaging-api/#send-broadcast-message
+  publisher: line
+  category: social
+  best_for: "Direct follower broadcasts, instant mobile push, Thai & Asian audience reach"
+  notes: "Messaging API Channel Access Token (long-lived). Broadcasts push notifications directly to all OA followers. Free tier has monthly message quota."
+  env_keys: [LINE_CHANNEL_ACCESS_TOKEN]
+
 # ---- Platforms in the catalog worth posting to MANUALLY (no public/free API) ----
 
 - slug: linkedin
