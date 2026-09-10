@@ -107,11 +107,11 @@ def html_to_telegraph_nodes(html_str: str) -> List[Dict]:
             nodes.append({"tag": "hr"})
         elif tag in ("ul", "ol"):
             items = re.findall(r"<li>(.*?)</li>", inner, re.S)
-            nodes.append({"tag": tag, "children": [{"tag": "li", "children": [_t(x)]} for x in items]})
+            nodes.append({"tag": tag, "children": [{"tag": "li", "children": _t(x)} for x in items]})
         elif tag == "pre":
-            nodes.append({"tag": "pre", "children": [_t(re.sub(r"<[^>]+>", "", inner))]})
+            nodes.append({"tag": "pre", "children": _t(re.sub(r"<[^>]+>", "", inner))})
         else:
-            nodes.append({"tag": tag, "children": [_t(inner)]})
+            nodes.append({"tag": tag, "children": _t(inner)})
     # drop images that point at local files (telegraph needs public URLs)
     return [n for n in nodes if not (n.get("tag") == "img" and n["attrs"]["src"].startswith(("output/", "./", "/")))]
 
