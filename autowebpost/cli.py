@@ -266,10 +266,18 @@ def cmd_connect(args):
             except Exception as e:
                 print(f"  Test broadcast failed: {e}")
                 if "429" in str(e) or "limit" in str(e).lower():
-                    print("\n  💡 Note: HTTP 429 means your LINE OA monthly message quota is exhausted,")
+                    print("\n  💡 Note: HTTP 429 means your LINE OA monthly broadcast quota is exhausted,")
                     print("     or your follower count exceeds remaining messages.")
-                    print("     Broadcasts will resume next month when your quota resets,")
-                    print("     or you can upgrade your plan in LINE OA Manager (manager.line.biz).")
+                    print("     (A broadcast to N followers consumes N messages).")
+                    
+                    from .platforms.line import send_push
+                    user_id = input("\nEnter your personal LINE User ID to send a 1-message test push instead (or press Enter to skip): ").strip()
+                    if user_id:
+                        try:
+                            send_push(token, user_id, [{"type": "text", "text": "✅ ทดสอบข้อความเดี่ยว (Push message 1 ข้อความ) จาก Auto-AI-WebPost"}])
+                            print("  ✅ 1-message test push sent successfully to your LINE!")
+                        except Exception as pe:
+                            print(f"  Push failed: {pe}")
                 return 1
         print("\nLINE connector verified and ready to use.\n")
     else:

@@ -21,6 +21,7 @@ API_BOT_INFO = "https://api.line.me/v2/bot/info"
 API_MESSAGE_QUOTA = "https://api.line.me/v2/bot/message/quota"
 API_MESSAGE_CONSUMPTION = "https://api.line.me/v2/bot/message/quota/consumption"
 API_BROADCAST = "https://api.line.me/v2/bot/message/broadcast"
+API_PUSH = "https://api.line.me/v2/bot/message/push"
 
 
 def get_bot_info(token: str) -> dict:
@@ -46,6 +47,32 @@ def get_quota_consumption(token: str) -> dict:
     except Exception:
         pass
     return {}
+
+
+def send_push(token: str, to_user_id: str, messages: List[dict]) -> dict:
+    """Send push message to a single user ID (consumes only 1 message from quota)."""
+    r = requests.post(
+        API_PUSH,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            **UA,
+        },
+        json={"to": to_user_id, "messages": messages},
+        timeout=60,
+    )
+    if not r.ok:
+        err_msg = ""
+        try:
+            err_data = r.json()
+            err_msg = err_data.get("message") or str(err_data)
+        except Exception:
+            err_msg = r.text[:300]
+        raise requests.HTTPError(f"{r.status_code} {r.reason}: {err_msg}", response=r)
+    try:
+        return r.json()
+    except Exception:
+        return {}
 
 
 def send_broadcast(token: str, messages: List[dict]) -> dict:
