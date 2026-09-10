@@ -19,6 +19,7 @@ from .base import UA, Publisher
 
 API_BOT_INFO = "https://api.line.me/v2/bot/info"
 API_MESSAGE_QUOTA = "https://api.line.me/v2/bot/message/quota"
+API_MESSAGE_CONSUMPTION = "https://api.line.me/v2/bot/message/quota/consumption"
 API_BROADCAST = "https://api.line.me/v2/bot/message/broadcast"
 
 
@@ -36,6 +37,17 @@ def get_quota(token: str) -> dict:
     return r.json()
 
 
+def get_quota_consumption(token: str) -> dict:
+    """Fetch LINE monthly message quota consumption (totalUsage)."""
+    try:
+        r = requests.get(API_MESSAGE_CONSUMPTION, headers={"Authorization": f"Bearer {token}", **UA}, timeout=15)
+        if r.status_code == 200:
+            return r.json()
+    except Exception:
+        pass
+    return {}
+
+
 def send_broadcast(token: str, messages: List[dict]) -> dict:
     """Send broadcast message via LINE Messaging API."""
     r = requests.post(
@@ -48,7 +60,15 @@ def send_broadcast(token: str, messages: List[dict]) -> dict:
         json={"messages": messages},
         timeout=60,
     )
-    r.raise_for_status()
+    if not r.ok:
+        err_msg = ""
+        try:
+            err_data = r.json()
+            err_msg = err_data.get("message") or str(err_data)
+        except Exception:
+            err_msg = r.text[:300]
+        raise requests.HTTPError(f"{r.status_code} {r.reason}: {err_msg}", response=r)
+
     try:
         return r.json()
     except Exception:
@@ -97,8 +117,12 @@ class LinePublisher(Publisher):
 
         try:
             quota_data = get_quota(token)
-            if quota_data.get("type") == "limited" and quota_data.get("value", 0) <= 0:
-                return PostResult(self.slug, False, detail="monthly message quota exhausted (0 remaining)")
+            consumption = get_quota_consumption(token)
+            used = consumption.get("totalUsage", 0)
+            if quota_data.get("type") == "limited":
+                total = quota_data.get("value", 0)
+                if total <= used:
+                    return PostResult(self.slug, False, detail=f"monthly message quota exhausted ({used}/{total} used)")
         except Exception:
             pass
 

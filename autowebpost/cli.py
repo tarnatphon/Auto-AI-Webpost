@@ -211,11 +211,13 @@ def cmd_connect(args):
         from .platforms.tumblr import run_connect_flow
         run_connect_flow()
     elif args.service == "line":
-        from .platforms.line import get_bot_info, get_quota, send_broadcast
-        from .config import get_secret
+        from .platforms.line import get_bot_info, get_quota, get_quota_consumption, send_broadcast
+        from .config import get_secret, ROOT
         token = get_secret("LINE_CHANNEL_ACCESS_TOKEN")
+        is_from_input = False
         if not token:
             token = input("LINE Channel Access Token: ").strip()
+            is_from_input = True
         if not token:
             print("Error: No Channel Access Token provided.")
             return 1
@@ -227,13 +229,34 @@ def cmd_connect(args):
         except Exception as e:
             print(f"  Connection failed: {e}")
             return 1
+
+        total_quota = None
+        used_quota = 0
         try:
             quota = get_quota(token)
             q_type = quota.get("type", "unknown")
-            val = quota.get("value", "unlimited")
-            print(f"  Quota    : {val} ({q_type})")
+            total_quota = quota.get("value", "unlimited")
+            consumption = get_quota_consumption(token)
+            used_quota = consumption.get("totalUsage", 0)
+            if q_type == "limited":
+                remaining = max(0, total_quota - used_quota)
+                print(f"  Quota    : {total_quota} monthly limit | Used: {used_quota} | Remaining: {remaining}")
+            else:
+                print(f"  Quota    : Unlimited | Used: {used_quota}")
         except Exception as e:
             print(f"  Could not read quota: {e}")
+
+        # Automatically save/update in .env if entered interactively
+        if is_from_input:
+            env_file = ROOT / ".env"
+            content = env_file.read_text(encoding="utf-8") if env_file.exists() else ""
+            if "LINE_CHANNEL_ACCESS_TOKEN=" in content:
+                import re
+                content = re.sub(r"LINE_CHANNEL_ACCESS_TOKEN=.*", f"LINE_CHANNEL_ACCESS_TOKEN={token}", content)
+            else:
+                content += f"\nLINE_CHANNEL_ACCESS_TOKEN={token}\n"
+            env_file.write_text(content, encoding="utf-8")
+            print(f"  Saved LINE_CHANNEL_ACCESS_TOKEN -> .env")
 
         test = input("\nSend test broadcast to followers now? [y/N]: ").strip().lower()
         if test == "y":
@@ -242,8 +265,13 @@ def cmd_connect(args):
                 print("  Test broadcast sent successfully!")
             except Exception as e:
                 print(f"  Test broadcast failed: {e}")
+                if "429" in str(e) or "limit" in str(e).lower():
+                    print("\n  💡 Note: HTTP 429 means your LINE OA monthly message quota is exhausted,")
+                    print("     or your follower count exceeds remaining messages.")
+                    print("     Broadcasts will resume next month when your quota resets,")
+                    print("     or you can upgrade your plan in LINE OA Manager (manager.line.biz).")
                 return 1
-        print("\nLINE connector verified. Ensure LINE_CHANNEL_ACCESS_TOKEN is in your .env.\n")
+        print("\nLINE connector verified and ready to use.\n")
     else:
         print("Available: tumblr, line")
 
