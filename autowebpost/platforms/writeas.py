@@ -44,6 +44,7 @@ class WriteAsPublisher(Publisher):
         r = requests.post(f"{self._instance()}/api/posts", json=payload, headers=headers, timeout=60)
         r.raise_for_status()
         data = r.json().get("data", {})
-        url = f"{self._instance()}/{data.get('slug', '')}"
-        tok_note = " (SAVE the post token in your vault if anonymous!)" if "token" in data else ""
+        post_id = data.get("id") or data.get("slug") or ""
+        url = f"{self._instance()}/{post_id}"
+        tok_note = f" (edit token: {data['token']})" if "token" in data else ""
         return PostResult(self.slug, True, url=url, detail=f"posted{tok_note}")
